@@ -1,4 +1,5 @@
 import type { LabelLot } from "./label.ts";
+import { printLabelSheets } from "./label.ts";
 import {
   clampDarkness,
   labelSizeOf,
@@ -498,10 +499,18 @@ export async function printThermal(lot: LabelLot, job: ThermalJob): Promise<"pri
   const sizeId = sizeIdForPrinter(job.sizeId, job.language);
   const fitted = { ...job, sizeId, copies };
   if (job.language === "brother") {
-    return printThermal(lot, { ...fitted, language: "escp" });
+    const usbOk = fitted.connection !== "download" && usbAvailable();
+    if (usbOk) {
+      try {
+        return await printThermal(lot, { ...fitted, language: "escp" });
+      } catch {
+        // Fall through to the system print dialog when USB is blocked on a live site.
+      }
+    }
+    printLabelSheets(lot, copies, hostPageSize(sizeId));
+    return "printed";
   }
   if (job.language === "system") {
-    const { printLabelSheets } = await import("./label.ts");
     printLabelSheets(lot, copies, hostPageSize(sizeId));
     return "printed";
   }

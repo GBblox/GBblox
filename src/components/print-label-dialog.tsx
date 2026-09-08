@@ -115,8 +115,8 @@ export function PrintLabelDialog({
     setBusy(mode);
     try {
       if (mode === "system") {
-        const result = await printThermal(printLot, { ...job(n), language: isHostPrint(printer.language) ? printer.language : "brother" });
-        if (result === "printed") toast.success(`Sent ${n === 1 ? "a label" : `${n} labels`} to Brother print service`);
+        const result = await printThermal(printLot, { ...job(n), language: "system" });
+        if (result === "printed") toast.success("Print dialog opened");
         return;
       }
       const result = await printThermal(printLot, job(n));
@@ -164,7 +164,13 @@ export function PrintLabelDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(92vh,44rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent
+        overlayClassName="z-[80]"
+        className="z-[80] flex max-h-[min(92vh,44rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0"
+        onPointerDownOutside={(e) => e.stopPropagation()}
+        onInteractOutside={(e) => e.stopPropagation()}
+        onFocusOutside={(e) => e.stopPropagation()}
+      >
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-3">
           <DialogHeader>
             <DialogTitle>Print label</DialogTitle>

@@ -169,21 +169,39 @@ export function printLabelSheets(
 ): void {
   const html = labelPrintDocument(lot, copies, size);
   const iframe = document.createElement("iframe");
+  iframe.title = "Print label";
   iframe.setAttribute("aria-hidden", "true");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
-  document.body.appendChild(iframe);
-  const doc = iframe.contentDocument;
-  if (!doc) {
+  iframe.style.cssText =
+    "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;pointer-events:none";
+  const cleanup = () => {
+    iframe.onload = null;
     iframe.remove();
-    throw new Error("Could not open a print sheet.");
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-  const win = iframe.contentWindow;
-  const cleanup = () => iframe.remove();
-  win?.addEventListener("afterprint", cleanup);
-  window.setTimeout(cleanup, 60_000);
-  win?.focus();
-  win?.print();
+  };
+  iframe.onload = () => {
+    const win = iframe.contentWindow;
+    if (!win) {
+      cleanup();
+      throw new Error("Could not open a print sheet.");
+    }
+    win.addEventListener("afterprint", cleanup);
+    window.setTimeout(cleanup, 120_000);
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      const popup = window.open("", "_blank", "noopener,width=480,height=360");
+      if (!popup) {
+        cleanup();
+        throw new Error("Could not open the print dialog. Allow pop-ups for this site and try System print.");
+      }
+      popup.document.open();
+      popup.document.write(html);
+      popup.document.close();
+      popup.focus();
+      popup.print();
+      cleanup();
+    }
+  };
+  document.body.appendChild(iframe);
+  iframe.srcdoc = html;
 }

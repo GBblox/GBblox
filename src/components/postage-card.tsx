@@ -23,16 +23,29 @@ function openPdf(base64: string, mode: "print" | "download") {
     a.href = url;
     a.download = "royal-mail-label.pdf";
     a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     return;
   }
-  const w = window.open(url, "_blank");
-  if (w) {
-    const t = window.setTimeout(() => w.print(), 700);
-    w.addEventListener("load", () => {
-      window.clearTimeout(t);
-      w.print();
-    });
-  }
+  const iframe = document.createElement("iframe");
+  iframe.title = "Print postage label";
+  iframe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0";
+  iframe.src = url;
+  const cleanup = () => {
+    iframe.remove();
+    URL.revokeObjectURL(url);
+  };
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {
+      const w = window.open(url, "_blank", "noopener");
+      if (w) w.addEventListener("load", () => w.print());
+      else toast.error("Allow pop-ups to print the postage label.");
+    }
+    window.setTimeout(cleanup, 120_000);
+  };
+  document.body.appendChild(iframe);
 }
 
 export function PostageCard({

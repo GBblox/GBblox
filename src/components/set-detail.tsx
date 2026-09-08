@@ -280,8 +280,31 @@ export function SetDetail({
 
   return (
     <>
-    <Sheet open={Boolean(set)} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="overflow-y-auto">
+    <Sheet
+      open={Boolean(set)}
+      onOpenChange={(o) => {
+        if (!o && printOpen) return;
+        if (!o) onClose();
+      }}
+    >
+      <SheetContent
+        className="overflow-y-auto"
+        onPointerDownOutside={(e) => {
+          if (printOpen) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (printOpen) e.preventDefault();
+        }}
+        onFocusOutside={(e) => {
+          if (printOpen) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (printOpen) {
+            e.preventDefault();
+            setPrintOpen(false);
+          }
+        }}
+      >
         {set && (
           <>
             <SheetHeader>
