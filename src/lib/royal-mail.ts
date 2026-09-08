@@ -2,11 +2,9 @@ import type { SaleOrderDetail } from "./types";
 
 export const RM_SERVICES = [
   { code: "TPN24", label: "Tracked 24" },
-  { code: "TPN48", label: "Tracked 48" },
-  { code: "TPS24", label: "Tracked 24 · signature" },
-  { code: "TPS48", label: "Tracked 48 · signature" },
-  { code: "BPL24", label: "1st Class" },
-  { code: "BPL48", label: "2nd Class" },
+  { code: "TPS48", label: "Tracked 48" },
+  { code: "STL1", label: "1st Class" },
+  { code: "STL2", label: "2nd Class" },
   { code: "SD1", label: "Special Delivery 1pm" },
 ] as const;
 
@@ -96,7 +94,7 @@ export function buildClickAndDropOrder(
               quantity: Math.max(1, line.qty || 1),
               unitValue: money(line.price),
               unitWeightInGrams: unitWeight,
-              originCountryCode: "GB",
+              originCountryCode: "GBR",
             })),
           },
         ],
@@ -174,7 +172,7 @@ export async function createRoyalMailLabel(
   const key = apiKey.trim();
   if (!key) throw new Error("Add a Royal Mail Click & Drop key in Settings.");
   const payload = buildClickAndDropOrder(detail, { ...opts, includeLabel: true });
-  const res = await rmFetch("/orders", key, { method: "POST", body: JSON.stringify(payload) });
+  const res = await rmFetch("/Orders", key, { method: "POST", body: JSON.stringify(payload) });
   const json = (await res.json().catch(() => null)) as {
     createdOrders?: Array<{
       orderIdentifier?: number | string;
@@ -213,7 +211,7 @@ export async function createRoyalMailLabel(
 
 export async function fetchRoyalMailLabel(apiKey: string, orderIdentifier: string): Promise<PostageResult> {
   const path =
-    `/orders/${encodeURIComponent(orderIdentifier)}/label` +
+    `/Orders/${encodeURIComponent(orderIdentifier)}/label` +
     `?documentType=postageLabel&includeReturnsLabel=false`;
   const res = await rmFetch(path, apiKey);
   const type = res.headers.get("content-type") || "";

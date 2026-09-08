@@ -25,6 +25,7 @@ export type ThermalPayload = {
   language: Exclude<PrintLanguage, "system" | "brother">;
   text: string;
   filename: string;
+  bytes?: Uint8Array;
 };
 
 export const SAMPLE_LABEL: LabelLot = {
@@ -286,9 +287,136 @@ export function generateEpl(lot: LabelLot, job: Pick<ThermalJob, "sizeId" | "dpi
   return lines.join("\n");
 }
 
+function escpAscii(s: string): string {
+  return s.replace(/[^\x20-\x7E]/g, " ").slice(0, 48);
+}
+
+function dots300(mm: number): number {
+  return Math.max(1, Math.round((mm / 25.4) * 300));
+}
+
+function le16(n: number): [number, number] {
+  const v = Math.max(0, Math.round(n)) & 0xffff;
+  return [v & 0xff, (v >> 8) & 0xff];
+}
+
+function escpSizeDots(n: number): [number, number] {
+  return le16(n);
+}
+
+/**
+ * Brother QL-1100/1110NWB ESC/P — Software Developer's Manual v1.00
+ *
+ * Flow from §1 / §2:
+ *   ESC i a 0 → ESC @ → ESC i L → ESC ( C → text / ESC i B → ESC i C → FF
+ * CODE128 ends with three backslashes (§5.9 ESC i B).
+ */
+export function generateEscp(lot: LabelLot, job: Pick<ThermalJob, "sizeId" | "copies">): Uint8Array {
+  const size = labelSizeOf(job.sizeId);
+  const { code, tag, caption, name, num, locationMode } = fields(lot);
+  const n = copiesOf(job.copies);
+  const heightMm = size.heightIn * 25.4;
+  const widthMm = size.widthIn * 25.4;
+  // Page length is feed-direction size in 1/300" dots, minus 6 mm (72 dots) unprintable margins.
+  const pageDots = Math.max(48, Math.min(11999, dots300(heightMm) - 72));
+  const [pL, pH] = le16(pageDots);
+  const barH = Math.min(480, Math.max(48, Math.round(dots300(heightMm) * 0.32)));
+  const [hL, hH] = le16(barH);
+  const title = escpAscii(locationMode ? caption : name);
+  const line2 = escpAscii(locationMode ? tag : `${tag} ${num}`.trim());
+  const skuLine = escpAscii(caption);
+  const barcodeData = escpAscii(code).slice(0, 64) || "X";
+  // Landscape when the label is taller than it is wide (text reads along the tape).
+  const landscape = heightMm > widthMm + 1;
+  const leftPad = 18;
+
+  const out: number[] = [];
+  const push = (...bytes: number[]) => {
+    out.push(...bytes);
+  };
+  const text = (s: string) => {
+    for (let i = 0; i < s.length; i++) push(s.charCodeAt(i) & 0x7f);
+  };
+  const absX = (dots: number) => {
+    const [a, b] = le16(dots);
+    push(0x1b, 0x24, a, b);
+  };
+  const absY = (dots: number) => {
+    const [a, b] = le16(dots);
+    push(0x1b, 0x28, 0x56, 0x02, 0x00, a, b);
+  };
+  const charSize = (dots: number) => {
+    const [a, b] = escpSizeDots(dots);
+    push(0x1b, 0x58, 0x00, a, b);
+  };
+
+  for (let copy = 0; copy < n; copy++) {
+    // ESC i a 0 — ESC/P standard mode
+    push(0x1b, 0x69, 0x61, 0x00);
+    // ESC @ — initialize
+    push(0x1b, 0x40);
+    // ESC i L — landscape (1) or portrait (0)
+    push(0x1b, 0x69, 0x4c, landscape ? 0x01 : 0x00);
+    // ESC ( C — page length in 1/300" dots (continuous tape; ignored on die-cut)
+    push(0x1b, 0x28, 0x43, 0x02, 0x00, pL, pH);
+    // ESC 3 24 — line feed 24/180"
+    push(0x1b, 0x33, 0x18);
+    // ESC a 0 — left align
+    push(0x1b, 0x61, 0x00);
+
+    let y = 8;
+    // Title — Helsinki outline, 42 dots
+    push(0x1b, 0x6b, 0x0b);
+    charSize(42);
+    absX(leftPad);
+    absY(y);
+    text(title);
+    y += 50;
+
+    // Tag + set number — Brougham 32-dot
+    push(0x1b, 0x6b, 0x00);
+    charSize(32);
+    absX(leftPad);
+    absY(y);
+    text(line2);
+    y += 40;
+
+    // ESC i t a r0 h nn w2 B data \\\  — CODE128, no HRI under bars
+    absX(leftPad);
+    absY(y);
+    push(0x1b, 0x69, 0x74, 0x61, 0x72, 0x00, 0x68, hL, hH, 0x77, 0x02, 0x42);
+    text(barcodeData);
+    push(0x5c, 0x5c, 0x5c);
+    y += barH + 12;
+
+    // Caption under barcode — Brougham 24-dot
+    push(0x1b, 0x6b, 0x00);
+    charSize(24);
+    absX(leftPad);
+    absY(y);
+    text(skuLine);
+
+    // ESC i C 1 — cut after print
+    push(0x1b, 0x69, 0x43, 0x01);
+    // FF — print page
+    push(0x0c);
+  }
+  return Uint8Array.from(out);
+}
+
 export function buildThermalLabel(lot: LabelLot, job: ThermalJob): ThermalPayload {
-  const language = isHostPrint(job.language) ? "zpl" : job.language;
   const { code } = fields(lot);
+  if (job.language === "escp") {
+    const bytes = generateEscp(lot, job);
+    return {
+      language: "escp",
+      text: Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+      filename: `${fileSafe(code)}.prn`,
+      bytes,
+    };
+  }
+  const language: "zpl" | "tspl" | "epl" =
+    job.language === "tspl" || job.language === "epl" ? job.language : "zpl";
   const text =
     language === "tspl" ? generateTspl(lot, job) : language === "epl" ? generateEpl(lot, job) : generateZpl(lot, job);
   return {
@@ -313,7 +441,9 @@ export function effectiveConnection(connection: ConnectionMode): ConnectionMode 
 }
 
 export function downloadLabel(payload: ThermalPayload): void {
-  const blob = new Blob([payload.text], { type: "text/plain;charset=utf-8" });
+  const blob = payload.bytes
+    ? new Blob([new Uint8Array(payload.bytes)], { type: "application/octet-stream" })
+    : new Blob([payload.text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -327,7 +457,7 @@ export function downloadLabel(payload: ThermalPayload): void {
 
 export async function pairUsbPrinter(): Promise<string> {
   const usb = requireUsb();
-  const device = await usb.requestDevice({ filters: [] });
+  const device = await usb.requestDevice({ filters: [{ vendorId: 0x04f9 }, { classCode: 7 }] });
   cachedUsb = device;
   const name = deviceName(device);
   return name;
@@ -374,7 +504,7 @@ export async function printThermal(lot: LabelLot, job: ThermalJob): Promise<"pri
     downloadLabel(payload);
     return "downloaded";
   }
-  const bytes = new TextEncoder().encode(payload.text);
+  const bytes = payload.bytes ?? new TextEncoder().encode(payload.text);
   try {
     if (connection === "serial") await sendSerial(bytes, job.baudRate);
     else await sendUsb(bytes);
@@ -484,6 +614,7 @@ async function sendUsb(bytes: Uint8Array): Promise<void> {
     device = await usb.requestDevice({
       filters: [
         { classCode: 7 },
+        { vendorId: 0x04f9 },
         { vendorId: 0x0a5f },
         { vendorId: 0x0dd4 },
         { vendorId: 0x0483 },

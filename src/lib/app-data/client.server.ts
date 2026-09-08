@@ -15,6 +15,14 @@ import {
 
 assertAppDataServerOnly("app-data/client.server");
 
+export function isConnectorTokenReady(): boolean {
+  return Boolean(
+    env("GROK_CONNECTOR_ACCESS_TOKEN") ||
+      env("CONNECTOR_ACCESS_TOKEN") ||
+      env("GROK_API_KEY"),
+  );
+}
+
 export const CONNECTORS_HOST_STAGING = "connectors.app-builder-testing.com";
 export const CONNECTORS_HOST_PROD = "connectors.grok.me";
 

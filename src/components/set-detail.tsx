@@ -18,6 +18,7 @@ import { LocationSelect } from "@/components/location-select";
 import { InclusionSelect } from "@/components/inclusion-select";
 import { ImagePicker } from "@/components/image-picker";
 import { BatchNumberSelect } from "@/components/batch-select";
+import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,7 +209,8 @@ export function SetDetail({
       }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["sets"] });
-      const isNew = set.condition === "new_sealed" || set.condition === "new_opened";
+      const cond = set?.condition;
+      const isNew = cond === "new_sealed" || cond === "new_opened";
       const avg = isNew ? (res.price.new ?? res.price.used) : (res.price.used ?? res.price.new);
       if (avg != null) setAsking(String(avg));
       if (res.price.used != null || res.price.new != null) {
@@ -308,8 +310,8 @@ export function SetDetail({
                     <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
                     <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
                     <Badge variant={statusBadgeVariant(set.status)}>{statusLabel(set.status)}</Badge>
-                    {set.ebayListed ? <Badge variant="ebay">eBay</Badge> : null}
-                    {set.blListed ? <Badge variant="bricklink">BrickLink</Badge> : null}
+                    {set.ebayListed ? <ChannelMark channel="ebay" /> : null}
+                    {set.blListed ? <ChannelMark channel="bricklink" /> : null}
                     {set.location ? <Badge variant="location">{set.location}</Badge> : null}
                   </div>
                 </div>

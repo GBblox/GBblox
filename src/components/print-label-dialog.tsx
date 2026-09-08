@@ -161,7 +161,7 @@ export function PrintLabelDialog({
           <DialogHeader>
             <DialogTitle>Print label</DialogTitle>
             <DialogDescription>
-              {size.label} Code 128 of the SKU or location. Brother print service uses the QL-1110NWB driver. ZPL, TSPL, or EPL can be sent to other thermal printers.
+              {size.label} Code 128 of the SKU or location. Brother ESC/P talks to the QL-1110NWB over USB as binary .prn. Brother print service uses the system driver. ZPL, TSPL, or EPL stay available for other thermal printers.
             </DialogDescription>
           </DialogHeader>
 
@@ -227,7 +227,10 @@ export function PrintLabelDialog({
                 <Field label="Language">
                   <Select
                     value={printer.language}
-                    onValueChange={(v) => printer.setPrinter({ language: v as PrintLanguage })}
+                    onValueChange={(v) => {
+                      const language = v as PrintLanguage;
+                      printer.setPrinter(language === "escp" ? { language, dpi: 300 } : { language });
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -262,8 +265,9 @@ export function PrintLabelDialog({
                   <>
                     <Field label="DPI">
                       <Select
-                        value={String(printer.dpi)}
+                        value={String(printer.language === "escp" ? 300 : printer.dpi)}
                         onValueChange={(v) => printer.setPrinter({ dpi: Number(v) as Dpi })}
+                        disabled={printer.language === "escp"}
                       >
                         <SelectTrigger>
                           <SelectValue />

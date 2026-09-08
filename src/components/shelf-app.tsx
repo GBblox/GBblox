@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, CheckSquare, ChevronDown, ClipboardList, LayoutGrid, Layers, List, PackageOpen, Plus, Receipt, RefreshCw, ScanBarcode, Search, Users, X } from "lucide-react";
+import { Boxes, CheckSquare, ChevronDown, ClipboardList, LayoutGrid, Layers, List, PackageOpen, Plus, Receipt, RefreshCw, ScanBarcode, Search, Store, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AddSetDialog } from "@/components/add-set-dialog";
 import { AuditPanel } from "@/components/audit-panel";
 import { BatchesPanel } from "@/components/batches-panel";
+import { ListingsPanel } from "@/components/listings-panel";
 import { GbBloxLogo } from "@/components/brick-mark";
 import { CsvDialog } from "@/components/csv-dialog";
 import { ProductEnquiry } from "@/components/product-enquiry";
 import { SalesPanel } from "@/components/sales-panel";
 import { SetDetail } from "@/components/set-detail";
 import { SettingsSheet } from "@/components/settings-sheet";
+import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +32,7 @@ import { bricklinkCanSync, credentialsOf, ebayCanPublish, rehydrateSettings, use
 import { rehydratePrinterSettings } from "@/lib/printer-settings";
 import { shelfBucket, type LegoSet, type ShelfBucket } from "@/lib/types";
 
-type AppView = "home" | ShelfBucket | "sales" | "enquiry" | "audit" | "batches";
+type AppView = "home" | ShelfBucket | "sales" | "enquiry" | "audit" | "batches" | "listings";
 
 function categoryKey(lot: LegoSet): string {
   return lot.category?.trim() || "Uncategorised";
@@ -240,7 +242,7 @@ export function ShelfApp() {
   }, [visible, grouped]);
 
   const shelf = SHELVES.find((s) => s.id === view);
-  const showSearch = view !== "home" && view !== "enquiry" && view !== "sales" && view !== "audit" && view !== "batches";
+  const showSearch = view !== "home" && view !== "enquiry" && view !== "sales" && view !== "audit" && view !== "batches" && view !== "listings";
 
   return (
     <div className="min-h-screen bg-bg">
@@ -283,7 +285,7 @@ export function ShelfApp() {
       <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-12 sm:px-6">
         {view === "sales" ? (
           <div>
-            <SalesPanel catalogSkus={catalogSkus} />
+            <SalesPanel catalogSkus={catalogSkus} lots={sets} />
           </div>
         ) : view === "enquiry" ? (
           <ProductEnquiry
@@ -295,6 +297,8 @@ export function ShelfApp() {
           <AuditPanel lots={sets} onOpen={(lot) => setSelectedId(lot.id)} />
         ) : view === "batches" ? (
           <BatchesPanel lots={sets} onOpenLot={(lot) => setSelectedId(lot.id)} />
+        ) : view === "listings" ? (
+          <ListingsPanel lots={sets} onOpen={(lot) => setSelectedId(lot.id)} />
         ) : view === "home" ? (
           <section>
             <h1 className="font-display text-[26px] leading-[1.15] font-extrabold tracking-tight text-navy">
@@ -303,7 +307,7 @@ export function ShelfApp() {
             <p className="mt-2 text-[16px] leading-snug text-fg">
               Pick a list to browse lots.
             </p>
-            <div className="mt-6 grid grid-cols-2 gap-2 sm:gap-5 md:grid-cols-3 lg:grid-cols-6">
+            <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-5 xl:grid-cols-4">
               {SHELVES.map((tile) => {
                 const Icon = tile.icon;
                 return (
@@ -314,7 +318,7 @@ export function ShelfApp() {
                       setQ("");
                       setView(tile.id);
                     }}
-                    className="group aspect-square rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
+                    className="group aspect-square w-full min-w-0 rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
                   >
                     <div className="flex h-full flex-col items-center justify-center gap-1.5 sm:gap-3">
                       <span className="flex size-10 items-center justify-center rounded-md bg-primary text-navy sm:size-16">
@@ -334,7 +338,7 @@ export function ShelfApp() {
               <button
                 type="button"
                 onClick={() => setView("enquiry")}
-                className="group aspect-square rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
+                className="group aspect-square w-full min-w-0 rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
               >
                 <div className="flex h-full flex-col items-center justify-center gap-1.5 sm:gap-3">
                   <span className="flex size-10 items-center justify-center rounded-md bg-primary text-navy sm:size-16">
@@ -349,7 +353,7 @@ export function ShelfApp() {
               <button
                 type="button"
                 onClick={() => setView("audit")}
-                className="group aspect-square rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
+                className="group aspect-square w-full min-w-0 rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
               >
                 <div className="flex h-full flex-col items-center justify-center gap-1.5 sm:gap-3">
                   <span className="flex size-10 items-center justify-center rounded-md bg-primary text-navy sm:size-16">
@@ -364,7 +368,7 @@ export function ShelfApp() {
               <button
                 type="button"
                 onClick={() => setView("batches")}
-                className="group aspect-square rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
+                className="group aspect-square w-full min-w-0 rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
               >
                 <div className="flex h-full flex-col items-center justify-center gap-1.5 sm:gap-3">
                   <span className="flex size-10 items-center justify-center rounded-md bg-primary text-navy sm:size-16">
@@ -374,6 +378,21 @@ export function ShelfApp() {
                     Batches
                   </span>
                   <span className="hidden text-sm leading-snug text-muted sm:block">Bulk lots items are split from</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("listings")}
+                className="group aspect-square w-full min-w-0 rounded-md bg-surface p-3 text-center shadow-[var(--shadow-border)] transition-[box-shadow,transform] duration-150 ease-[var(--ease-smooth-out)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-border-hover)] sm:p-6"
+              >
+                <div className="flex h-full flex-col items-center justify-center gap-1.5 sm:gap-3">
+                  <span className="flex size-10 items-center justify-center rounded-md bg-primary text-navy sm:size-16">
+                    <Store className="size-5 sm:size-8" />
+                  </span>
+                  <span className="font-display text-[1.0625rem] leading-tight font-extrabold tracking-tight sm:text-xl">
+                    Listings
+                  </span>
+                  <span className="hidden text-sm leading-snug text-muted sm:block">Bulk list on eBay or BrickLink</span>
                 </div>
               </button>
             </div>
@@ -702,15 +721,15 @@ function SetCard({
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
           <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
           <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
-          {set.ebayListed ? <Badge variant="ebay">eBay</Badge> : null}
-          {set.blListed ? <Badge variant="bricklink">BL</Badge> : null}
+          {set.ebayListed ? <ChannelMark channel="ebay" height={12} /> : null}
+          {set.blListed ? <ChannelMark channel="bricklink" height={12} /> : null}
           {set.location ? <Badge variant="location">{set.location}</Badge> : null}
-        <p className="truncate text-xs text-muted">
-            {[conditionLabel(set.condition), set.year, set.category, set.subCategory]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
         </div>
+        <p className="truncate text-xs text-muted">
+          {[conditionLabel(set.condition), set.year, set.category, set.subCategory]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
         <p className="font-display text-xl font-extrabold tracking-tight tabular-nums">
           {formatMoney(set.askingPrice ?? set.usedPrice, set.currency)}
         </p>
@@ -748,10 +767,12 @@ function SetListRow({
         <span className="mt-0.5 block font-mono text-[11px] text-subtle">
           {[itemNumberDisplay(set.setNum, set.itemType), set.sku].filter(Boolean).join(" · ")}
         </span>
-        <span className="mt-1 flex flex-wrap gap-1">
+        <span className="mt-1 flex flex-wrap items-center gap-1">
           <Badge variant={statusBadgeVariant(set.status)}>{statusLabel(set.status)}</Badge>
           <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
           <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
+          {set.ebayListed ? <ChannelMark channel="ebay" height={12} /> : null}
+          {set.blListed ? <ChannelMark channel="bricklink" height={12} /> : null}
           {set.location ? <Badge variant="location">{set.location}</Badge> : null}
         </span>
       </span>

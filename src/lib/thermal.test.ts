@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { labelSizeOf } from "./printer-settings.ts";
-import { barcodeModuleWidth, buildThermalLabel, generateEpl, generateTspl, generateZpl, labelLayout, wrapWords } from "./thermal.ts";
+import { barcodeModuleWidth, buildThermalLabel, generateEpl, generateEscp, generateTspl, generateZpl, labelLayout, wrapWords } from "./thermal.ts";
 
 const lot = {
   sku: "GBB-SET-75192-0001",
@@ -77,6 +77,31 @@ describe("thermal labels", () => {
     assert.equal(t.filename, "GBB-SET-75192-0001.tspl");
     const e = buildThermalLabel(lot, { ...job, language: "epl", connection: "download", baudRate: 9600 });
     assert.equal(e.filename, "GBB-SET-75192-0001.epl");
+    const p = buildThermalLabel(lot, { ...job, language: "escp", connection: "usb", baudRate: 9600 });
+    assert.equal(p.filename, "GBB-SET-75192-0001.prn");
+    assert.ok(p.bytes && p.bytes.length > 20);
+    assert.equal(p.bytes[0], 0x1b);
+    assert.equal(p.bytes[1], 0x69);
+    assert.equal(p.bytes[2], 0x61);
+    assert.equal(p.bytes[3], 0x00);
+  });
+
+  it("builds Brother ESC/P for the QL-1110NWB", () => {
+    const bytes = generateEscp(lot, { sizeId: "dk-62x29", copies: 1 });
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
+    assert.match(hex, /^1b 69 61 00 1b 40 1b 69 4c 00/);
+    assert.match(hex, /1b 28 43 02 00/);
+    assert.match(hex, /1b 6b 0b/);
+    assert.match(hex, /1b 69 74 61 72 00 68/);
+    assert.match(hex, /77 02 42/);
+    assert.ok(hex.includes("5c 5c 5c"));
+    assert.match(hex, /1b 69 43 01/);
+    assert.match(hex, /0c$/);
+    const sku = "GBB-SET-75192-0001";
+    const skuHex = Array.from(sku, (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+    assert.ok(hex.includes(skuHex));
+    const twice = generateEscp(lot, { sizeId: "dk-62x29", copies: 2 });
+    assert.equal(twice.length, bytes.length * 2);
   });
 
   it("wraps long names", () => {

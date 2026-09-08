@@ -44,7 +44,8 @@ export function PostageCard({
 }) {
   const settings = useSettings();
   const canPost = royalMailCanPost(settings);
-  const [service, setService] = useState("TPN48");
+  const [service, setService] = useState("TPN24");
+  const [customService, setCustomService] = useState("");
   const [pack, setPack] = useState("smallParcel");
   const [weight, setWeight] = useState("500");
   const [confirm, setConfirm] = useState(false);
@@ -56,7 +57,7 @@ export function PostageCard({
           ...credentialsOf(settings),
           channel: detail.channel,
           id: detail.id,
-          serviceCode: service,
+          serviceCode: (customService.trim() || service).toUpperCase(),
           packageFormat: pack,
           weightGrams: Math.max(1, Number(weight) || 500),
         },
@@ -155,6 +156,12 @@ export function PostageCard({
                   ))}
                 </SelectContent>
               </Select>
+              <Input
+                value={customService}
+                onChange={(e) => setCustomService(e.target.value)}
+                placeholder="Or paste the code from Click & Drop"
+                className="mt-1.5 font-mono text-xs"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Package</Label>

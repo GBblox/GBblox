@@ -45,7 +45,7 @@ describe("royal mail click and drop", () => {
 
   it("builds a Click & Drop create-order payload", () => {
     const body = buildClickAndDropOrder(detail, {
-      serviceCode: "TPN48",
+      serviceCode: "TPS48",
       packageFormat: "smallParcel",
       weightGrams: 250,
       includeLabel: true,
@@ -54,7 +54,7 @@ describe("royal mail click and drop", () => {
     assert.equal(item.orderReference, "BS-bricklink-32419849");
     assert.equal(item.recipient.address.postcode, "SW1A 2AA");
     assert.equal(item.recipient.address.countryCode, "GB");
-    assert.equal(item.postageDetails.serviceCode, "TPN48");
+    assert.equal(item.postageDetails.serviceCode, "TPS48");
     assert.equal(item.packages[0].weightInGrams, 250);
     assert.equal(item.packages[0].contents[0].SKU, "GBB-MINIFIG-SW1070-0001");
     assert.equal(item.label.includeLabelInResponse, true);

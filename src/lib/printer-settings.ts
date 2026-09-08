@@ -19,6 +19,7 @@ export const LABEL_SIZES = [
 export type LabelSizeId = (typeof LABEL_SIZES)[number]["id"];
 
 export const PRINT_LANGUAGES = [
+  { id: "escp", label: "Brother ESC/P", hint: "QL-1110NWB · Software Developer ESC/P commands" },
   { id: "brother", label: "Brother print service", hint: "QL-1110NWB · Brother driver / Print Service" },
   { id: "system", label: "System print", hint: "Browser print dialog" },
   { id: "zpl", label: "ZPL", hint: "Zebra, Rollo, many 4″ desktops" },
@@ -53,7 +54,7 @@ export type PrinterSettings = {
 };
 
 export const DEFAULT_PRINTER: PrinterSettings = {
-  language: "brother",
+  language: "escp",
   sizeId: "dk-62x29",
   dpi: 300,
   darkness: 15,
@@ -82,15 +83,19 @@ export const usePrinterStore = create<PrinterState>()(
     {
       name: "brickshelf-printer",
       skipHydration: true,
-      version: 4,
+      version: 5,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<PrinterSettings> & { sizeId?: string };
+        const language =
+          p.language === "zpl" || p.language === "tspl" || p.language === "epl" || p.language === "system"
+            ? p.language
+            : "escp";
         return {
           ...DEFAULT_PRINTER,
           ...p,
-          sizeId: DEFAULT_PRINTER.sizeId,
-          language: p.language && PRINT_LANGUAGES.some((l) => l.id === p.language) ? p.language : DEFAULT_PRINTER.language,
-          dpi: 300,
+          sizeId: p.sizeId && LABEL_SIZES.some((s) => s.id === p.sizeId) ? p.sizeId : DEFAULT_PRINTER.sizeId,
+          language,
+          dpi: language === "escp" ? 300 : p.dpi === 203 || p.dpi === 300 ? p.dpi : 300,
           lastPrinterName: p.lastPrinterName?.trim() || DEFAULT_PRINTER.lastPrinterName,
         };
       },
@@ -142,8 +147,9 @@ export function languageLabel(id: PrintLanguage): string {
   return PRINT_LANGUAGES.find((l) => l.id === id)?.label ?? id;
 }
 
-export function languageFileExt(id: PrintLanguage): "zpl" | "tspl" | "epl" | "txt" {
+export function languageFileExt(id: PrintLanguage): "zpl" | "tspl" | "epl" | "prn" | "txt" {
   if (id === "zpl" || id === "tspl" || id === "epl") return id;
+  if (id === "escp") return "prn";
   return "txt";
 }
 

@@ -89,7 +89,7 @@ export function SettingsSheet() {
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not save token"),
   });
   const mintNotify = useMutation({
-    mutationFn: () => mintEbayNotifyToken({ data: {} }),
+    mutationFn: () => mintEbayNotifyToken(),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["ebay-notify-config"] });
       toast.success(`New ${res.token.length}-character token — paste it into the eBay portal`);
@@ -288,13 +288,16 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Set up for Brother QL-1110NWB. Choose Brother print service to print through the Brother driver / Print Service Plugin. DK roll sizes are listed below. ZPL / TSPL / EPL stay available for other printers.
+              Set up for Brother QL-1110NWB using the Software Developer ESC/P command set (binary .prn over USB). Brother print service uses the installed driver instead. DK roll sizes are listed below. ZPL / TSPL / EPL stay available for other printers.
             </p>
             <div className="space-y-2">
               <Label>Language</Label>
               <Select
                 value={printer.language}
-                onValueChange={(v) => printer.setPrinter({ language: v as PrintLanguage })}
+                onValueChange={(v) => {
+                  const language = v as PrintLanguage;
+                  printer.setPrinter(language === "escp" ? { language, dpi: 300 } : { language });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -330,9 +333,9 @@ export function SettingsSheet() {
               <div className="space-y-2">
                 <Label>DPI</Label>
                 <Select
-                  value={String(printer.dpi)}
+                  value={String(printer.language === "escp" ? 300 : printer.dpi)}
                   onValueChange={(v) => printer.setPrinter({ dpi: Number(v) as Dpi })}
-                  disabled={isHostPrint(printer.language)}
+                  disabled={isHostPrint(printer.language) || printer.language === "escp"}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -658,25 +661,26 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Authorisation key from Click & Drop integrations. Used on an order to pay for postage and print a label.
+              UK Click & Drop API at api.parcel.royalmail.com. The authorisation key lives in your Click & Drop account under Settings → Integrations.
             </p>
             <div className="space-y-2">
-              <Label htmlFor="rm-key">Authorisation key</Label>
+              <Label htmlFor="rm-key">Click & Drop authorisation key</Label>
               <Input
                 id="rm-key"
                 type="password"
                 autoComplete="off"
                 value={settings.royalMailApiKey}
                 onChange={(e) => setSettings({ royalMailApiKey: e.target.value })}
+                placeholder="UUID from Click & Drop"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rm-sender">Trading name on labels</Label>
+              <Label htmlFor="rm-sender">Default trading name</Label>
               <Input
                 id="rm-sender"
                 value={settings.royalMailSenderName}
                 onChange={(e) => setSettings({ royalMailSenderName: e.target.value })}
-                placeholder="Optional sender name"
+                placeholder="Name printed as sender on labels"
               />
             </div>
             <Button
@@ -688,6 +692,12 @@ export function SettingsSheet() {
               {testRm.isPending ? <Loader2 className="animate-spin" /> : <Check />}
               Test Click & Drop
             </Button>
+            <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-muted">
+              <li>Sign in at clickanddrop.royalmail.com with your UK business account</li>
+              <li>Settings → Integrations → add an API integration and copy the authorisation key</li>
+              <li>Set the default trading name there so the return address prints on labels</li>
+              <li>Paste the key here, then create labels from a sale order</li>
+            </ol>
           </section>
           ) : null}
         </div>
