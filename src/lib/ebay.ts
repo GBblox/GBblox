@@ -114,6 +114,8 @@ function storefrontXml(cat: StoreCat | null): string {
   if (!cat) return "";
   return `<Storefront><StoreCategoryID>${escapeXml(cat.id)}</StoreCategoryID></Storefront>`;
 }
+
+function conditionId(c: Condition): number {
   if (c === "new_sealed") return 1000;
   if (c === "new_opened") return 1500;
   return 3000;
