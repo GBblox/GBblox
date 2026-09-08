@@ -10,6 +10,11 @@ import {
   testBricklinkCreds,
 } from "@/lib/bricklink-store";
 import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay } from "@/lib/ebay";
+import {
+  generateNotifyToken,
+  loadEbayNotifyConfig,
+  saveEbayNotifyConfig,
+} from "@/lib/ebay-notifications";
 import { isBatchNumber } from "@/lib/batch-rules";
 import { getSql } from "@/lib/db";
 import { marketplaceOf, normalizeLocation, isValidLocation } from "@/lib/format";
@@ -981,6 +986,20 @@ export const testEbayToken = createServerFn({ method: "POST" })
     }
     return { ok: true as const, userId: user ?? "ok" };
   });
+
+export const getEbayNotifyConfig = createServerFn({ method: "GET" }).handler(async () => {
+  return loadEbayNotifyConfig();
+});
+
+export const updateEbayNotifyConfig = createServerFn({ method: "POST" })
+  .validator(z.object({ token: z.string().min(32).max(80), endpoint: z.string().max(300).optional().default("") }))
+  .handler(async ({ data }) => saveEbayNotifyConfig(data.token, data.endpoint ?? ""));
+
+export const mintEbayNotifyToken = createServerFn({ method: "POST" }).handler(async () => {
+  const current = await loadEbayNotifyConfig();
+  const token = generateNotifyToken();
+  return saveEbayNotifyConfig(token, current.endpoint);
+});
 
 export const testBricklinkToken = createServerFn({ method: "POST" })
   .validator(

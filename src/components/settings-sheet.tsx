@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft, KeyRound, Loader2, MapPin, Plus, Printer, Settings, Store, Truck, Usb, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { addLocationOption, removeLocationOption } from "@/lib/locations";
-import { testBricklinkToken, testEbayToken } from "@/lib/server/sets";
+import { getEbayNotifyConfig, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
 import { testRoyalMailKey } from "@/lib/server/postage";
 import { bricklinkCanSync, royalMailCanPost, useSettings } from "@/lib/settings";
 import {
@@ -59,6 +59,7 @@ const PAGES: { id: SettingsPage; title: string; blurb: string; icon: typeof MapP
 export function SettingsSheet() {
   const settings = useSettings();
   const setSettings = settings.setSettings;
+  const qc = useQueryClient();
   const printer = usePrinter();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<SettingsPage | null>(null);
@@ -72,6 +73,28 @@ export function SettingsSheet() {
       }),
     onSuccess: (res) => toast.success(`Connected as ${res.userId}`),
     onError: (err) => toast.error(err instanceof Error ? err.message : "Token failed"),
+  });
+
+  const notifyCfg = useQuery({
+    queryKey: ["ebay-notify-config"],
+    queryFn: () => getEbayNotifyConfig(),
+    enabled: open && page === "ebay",
+  });
+  const saveNotify = useMutation({
+    mutationFn: (payload: { token: string; endpoint: string }) => updateEbayNotifyConfig({ data: payload }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ebay-notify-config"] });
+      toast.success("Deletion endpoint token saved");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not save token"),
+  });
+  const mintNotify = useMutation({
+    mutationFn: () => mintEbayNotifyToken({ data: {} }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["ebay-notify-config"] });
+      toast.success(`New ${res.token.length}-character token — paste it into the eBay portal`);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not generate token"),
   });
 
   const testBl = useMutation({
@@ -518,17 +541,56 @@ export function SettingsSheet() {
               {test.isPending ? <Loader2 className="animate-spin" /> : <Check />}
               Test token
             </Button>
+            <div className="space-y-2 rounded-md bg-surface p-3 shadow-[var(--shadow-border)]">
+              <Label htmlFor="ebay-verify">Marketplace deletion verification token</Label>
+              <p className="text-xs text-muted">eBay requires 32–80 characters. Generate one, save it, then paste the same value in the developer portal.</p>
+              <Input
+                id="ebay-verify"
+                value={notifyCfg.data?.token ?? ""}
+                readOnly
+                className="font-mono text-xs"
+              />
+              <Input
+                value={notifyCfg.data?.endpoint || (typeof window !== "undefined" ? `${window.location.origin}/api/ebay/notifications` : "")}
+                readOnly
+                className="font-mono text-xs"
+                aria-label="Notification endpoint"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={mintNotify.isPending}
+                  onClick={() => mintNotify.mutate()}
+                >
+                  {mintNotify.isPending ? <Loader2 className="animate-spin" /> : null}
+                  Generate 64-character token
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!notifyCfg.data?.token || saveNotify.isPending}
+                  onClick={() =>
+                    saveNotify.mutate({
+                      token: notifyCfg.data!.token,
+                      endpoint:
+                        notifyCfg.data?.endpoint ||
+                        (typeof window !== "undefined" ? `${window.location.origin}/api/ebay/notifications` : ""),
+                    })
+                  }
+                >
+                  Save token
+                </Button>
+              </div>
+            </div>
             <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-muted">
               <li>Create a UK production app at developer.ebay.com</li>
               <li>Copy App ID and Cert ID, then a User token with Trading scopes</li>
               <li>Set city and postal code on the Marketplace tile (eBay UK requires them)</li>
               <li>
-                Account deletion: Event Notification delivery, topic MARKETPLACE_ACCOUNT_DELETION,
-                endpoint https://YOUR-DOMAIN/api/ebay/notifications
-              </li>
-              <li>
-                Set EBAY_NOTIFICATION_VERIFICATION_TOKEN (same token as the portal) and
-                EBAY_NOTIFICATION_ENDPOINT to that exact HTTPS URL
+                Account deletion: Event Notification, topic MARKETPLACE_ACCOUNT_DELETION,
+                endpoint shown above, verification token generated above (32–80 characters)
               </li>
             </ol>
           </section>

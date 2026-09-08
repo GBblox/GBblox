@@ -18,8 +18,9 @@ export const Route = createFileRoute("/api/ebay/notifications")({
         } = await import("@/lib/ebay-notifications");
         const url = new URL(request.url);
         const challenge = url.searchParams.get("challenge_code")?.trim() || "";
-        const token = ebayNotificationToken();
-        const endpoint = ebayNotificationEndpoint() || `${url.origin}/api/ebay/notifications`;
+        const token = await ebayNotificationToken();
+        const savedEndpoint = await ebayNotificationEndpoint();
+        const endpoint = savedEndpoint || `${url.origin}/api/ebay/notifications`;
         if (!challenge) {
           return json({
             ok: true,
@@ -28,10 +29,11 @@ export const Route = createFileRoute("/api/ebay/notifications")({
             marketplace: "EBAY_GB",
             endpoint,
             configured: Boolean(token),
+            tokenLength: token.length,
           });
         }
         if (!token) {
-          return json({ error: "Set EBAY_NOTIFICATION_VERIFICATION_TOKEN." }, 500);
+          return json({ error: "Save a 32–80 character verification token in Settings → eBay API." }, 500);
         }
         return json({ challengeResponse: ebayChallengeResponse(challenge, token, endpoint) });
       },
