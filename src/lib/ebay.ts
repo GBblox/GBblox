@@ -118,7 +118,18 @@ function storefrontXml(cat: StoreCat | null): string {
 function conditionId(c: Condition): number {
   if (c === "new_sealed") return 1000;
   if (c === "new_opened") return 1500;
+  if (c === "used_parts") return 7000;
   return 3000;
+}
+
+function conditionDescription(set: LegoSet): string {
+  const bits = [conditionLabel(set.condition)];
+  if (set.itemType !== "minifig") {
+    bits.push(`Box: ${inclusionLabel(set.comesWithBox)}`);
+    bits.push(`Instructions: ${inclusionLabel(set.comesWithInstructions)}`);
+  }
+  if (set.notes.trim()) bits.push(set.notes.trim());
+  return bits.join(". ").slice(0, 1000);
 }
 
 function escapeXml(s: string): string {
@@ -128,6 +139,34 @@ function escapeXml(s: string): string {
     .replaceAll(">", "\u0026gt;")
     .replaceAll('"', "\u0026quot;")
     .replaceAll("'", "\u0026apos;");
+}
+
+function listingConditionCopy(set: LegoSet): string[] {
+  switch (set.condition) {
+    case "new_sealed":
+      return ["This item is brand new and factory sealed."];
+    case "new_opened":
+      return ["This item is new and has been opened."];
+    case "used_incomplete":
+      return ["This item is pre-owned and incomplete."];
+    case "used_parts":
+      return ["This item is sold as parts only and is not a complete set."];
+    default:
+      return ["This item is pre-owned but in good working condition."];
+  }
+}
+
+function listingPackagingCopy(set: LegoSet): string[] {
+  if (set.itemType === "minifig") return [];
+  if (set.condition === "new_sealed") {
+    return ["Instructions included. Original packaging included."];
+  }
+  const bits: string[] = [];
+  if (set.comesWithInstructions === "yes") bits.push("Instructions included");
+  else if (set.comesWithInstructions === "no") bits.push("Instructions not included");
+  if (set.comesWithBox === "yes") bits.push("Original packaging included");
+  else if (set.comesWithBox === "no") bits.push("Original packaging not included");
+  return bits.length ? [`${bits.join(". ")}.`] : [];
 }
 
 function escapeHtml(s: string): string {
@@ -150,24 +189,23 @@ export function composeListing(set: LegoSet, marketplace: MarketplaceId): Listin
   const notes = set.notes.trim()
     ? `<p><b>Seller notes</b><br/>${escapeHtml(set.notes).replaceAll("\n", "<br/>")}</p>`
     : "";
+  const yearLine = set.year
+    ? `<p>Released in ${set.year} this LEGO ${escapeHtml(set.name)} is a great addition to any collection.</p>`
+    : `<p>This LEGO ${escapeHtml(set.name)} is a great addition to any collection.</p>`;
+  const conditionLines = listingConditionCopy(set).map((line) => `<p>${escapeHtml(line)}</p>`);
+  const packLines = listingPackagingCopy(set).map((line) => `<p>${escapeHtml(line)}</p>`);
+  const stickerLine =
+    set.itemType === "set" && set.condition !== "used_parts"
+      ? "<p>All Stickered pieces are present where applicable.</p>"
+      : "";
   const descriptionHtml = [
     img,
-    `<h2>LEGO ${escapeHtml(kind)} ${escapeHtml(num)} ${escapeHtml(set.name)}</h2>`,
-    "<ul>",
-    `<li>SKU: ${escapeHtml(set.sku)}</li>`,
-    `<li>${escapeHtml(itemTypeLabel(set.itemType))} no.: ${escapeHtml(set.setNum)}</li>`,
-    set.year ? `<li>Year released: ${set.year}</li>` : "",
-    set.category ? `<li>Category: ${escapeHtml(set.category)}</li>` : "",
-    set.subCategory ? `<li>Sub category: ${escapeHtml(set.subCategory)}</li>` : "",
-    set.weightGrams != null ? `<li>Item weight: ${set.weightGrams.toLocaleString()} g</li>` : "",
-    set.theme && !set.category ? `<li>Theme: ${escapeHtml(set.theme)}</li>` : "",
-    set.numParts ? `<li>Pieces: ${set.numParts.toLocaleString()}</li>` : "",
-    `<li>Condition: ${escapeHtml(conditionLabel(set.condition))}</li>`,
-    `<li>Comes with instructions: ${escapeHtml(inclusionLabel(set.comesWithInstructions))}</li>`,
-    `<li>Comes with box: ${escapeHtml(inclusionLabel(set.comesWithBox))}</li>`,
-    "</ul>",
+    "<p>At GBblox we only sell <b>GENUINE LEGO</b> sets and minifigures.</p>",
+    yearLine,
+    ...conditionLines,
+    ...packLines,
+    stickerLine,
     notes,
-    `<p>Photos show the actual ${set.itemType === "minifig" ? "minifigure" : "set"}. Stored smoke-free. Check the condition and notes above before bidding or buying.</p>`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -284,6 +322,7 @@ export async function publishToEbay(
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
     <CategoryMappingAllowed>true</CategoryMappingAllowed>
     <ConditionID>${draft.conditionId}</ConditionID>
+    <ConditionDescription>${escapeXml(conditionDescription(set))}</ConditionDescription>
     <Country>GB</Country>
     <Currency>GBP</Currency>
     <DispatchTimeMax>${Number(settings.handlingDays) || 1}</DispatchTimeMax>
