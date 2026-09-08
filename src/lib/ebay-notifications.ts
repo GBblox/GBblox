@@ -18,8 +18,10 @@ export function ebayNotificationTokenFromEnv(): string {
   return env("EBAY_NOTIFICATION_VERIFICATION_TOKEN")?.trim() || "";
 }
 
+export const PUBLIC_EBAY_NOTIFY_ENDPOINT = "https://gbblox.co.uk/api/ebay/notifications";
+
 export function ebayNotificationEndpointFromEnv(): string {
-  return env("EBAY_NOTIFICATION_ENDPOINT")?.trim().replace(/\/+$/, "") || "";
+  return env("EBAY_NOTIFICATION_ENDPOINT")?.trim().replace(/\/+$/, "") || PUBLIC_EBAY_NOTIFY_ENDPOINT;
 }
 
 export function ebayChallengeResponse(challengeCode: string, token: string, endpoint: string): string {
@@ -49,7 +51,7 @@ export async function loadEbayNotifyConfig(): Promise<{ token: string; endpoint:
   );
   const row = rows[0];
   const token = isValidNotifyToken(envToken) ? envToken : (row?.verification_token ?? "");
-  const endpoint = envEndpoint || row?.endpoint || "";
+  const endpoint = envEndpoint || row?.endpoint || PUBLIC_EBAY_NOTIFY_ENDPOINT;
   return { token, endpoint };
 }
 

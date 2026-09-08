@@ -15,12 +15,13 @@ export const Route = createFileRoute("/api/ebay/notifications")({
           ebayChallengeResponse,
           ebayNotificationEndpoint,
           ebayNotificationToken,
+          PUBLIC_EBAY_NOTIFY_ENDPOINT,
         } = await import("@/lib/ebay-notifications");
         const url = new URL(request.url);
         const challenge = url.searchParams.get("challenge_code")?.trim() || "";
         const token = await ebayNotificationToken();
         const savedEndpoint = await ebayNotificationEndpoint();
-        const endpoint = savedEndpoint || `${url.origin}/api/ebay/notifications`;
+        const endpoint = savedEndpoint || PUBLIC_EBAY_NOTIFY_ENDPOINT;
         if (!challenge) {
           return json({
             ok: true,

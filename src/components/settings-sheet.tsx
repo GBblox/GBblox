@@ -551,7 +551,7 @@ export function SettingsSheet() {
                 className="font-mono text-xs"
               />
               <Input
-                value={notifyCfg.data?.endpoint || (typeof window !== "undefined" ? `${window.location.origin}/api/ebay/notifications` : "")}
+                value={notifyCfg.data?.endpoint || "https://gbblox.co.uk/api/ebay/notifications"}
                 readOnly
                 className="font-mono text-xs"
                 aria-label="Notification endpoint"
@@ -574,9 +574,7 @@ export function SettingsSheet() {
                   onClick={() =>
                     saveNotify.mutate({
                       token: notifyCfg.data!.token,
-                      endpoint:
-                        notifyCfg.data?.endpoint ||
-                        (typeof window !== "undefined" ? `${window.location.origin}/api/ebay/notifications` : ""),
+                      endpoint: notifyCfg.data?.endpoint || "https://gbblox.co.uk/api/ebay/notifications",
                     })
                   }
                 >

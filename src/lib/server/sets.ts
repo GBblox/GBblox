@@ -998,7 +998,7 @@ export const updateEbayNotifyConfig = createServerFn({ method: "POST" })
 export const mintEbayNotifyToken = createServerFn({ method: "POST" }).handler(async () => {
   const current = await loadEbayNotifyConfig();
   const token = generateNotifyToken();
-  return saveEbayNotifyConfig(token, current.endpoint);
+  return saveEbayNotifyConfig(token, current.endpoint || "https://gbblox.co.uk/api/ebay/notifications");
 });
 
 export const testBricklinkToken = createServerFn({ method: "POST" })
