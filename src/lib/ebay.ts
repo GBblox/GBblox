@@ -14,7 +14,106 @@ export type ListingDraft = {
   prelistUrl: string;
 };
 
-function conditionId(c: Condition): number {
+function packagingOf(set: LegoSet): string {
+  if (set.condition === "new_sealed") return "Box";
+  if (set.comesWithBox === "yes") return "Box";
+  if (set.comesWithBox === "no") return "No Packaging";
+  return "";
+}
+
+export function ebayItemSpecifics(set: LegoSet): [string, string][] {
+  const num = itemNumberDisplay(set.setNum, set.itemType);
+  const theme = (set.category || set.theme || "").trim();
+  const sub = (set.subCategory || "").trim();
+  const pairs: [string, string][] = [["Brand", "LEGO"]];
+
+  if (set.itemType === "minifig") {
+    pairs.push(["Type", "Minifigure"]);
+    if (set.name.trim()) pairs.push(["Character", set.name.trim()]);
+    if (theme) pairs.push(["Theme", theme]);
+    if (num) pairs.push(["MPN", num]);
+  } else {
+    pairs.push(["Type", "Sets"]);
+    if (theme) pairs.push(["Theme", theme]);
+    if (sub && sub.toLowerCase() !== theme.toLowerCase()) pairs.push(["Subtheme", sub]);
+    if (num) {
+      pairs.push(["LEGO Set Number", num]);
+      pairs.push(["MPN", num]);
+    }
+    if (set.numParts) pairs.push(["Number of Pieces", String(set.numParts)]);
+    const pack = packagingOf(set);
+    if (pack) pairs.push(["Packaging", pack]);
+  }
+
+  if (set.year) pairs.push(["Year Manufactured", String(set.year)]);
+  if (set.comesWithInstructions === "yes") pairs.push(["Features", "Includes instructions"]);
+  else if (set.comesWithInstructions === "no") pairs.push(["Features", "No instructions"]);
+
+  const seen = new Set<string>();
+  return pairs.filter(([name, value]) => {
+    const key = name.toLowerCase();
+    if (!value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function itemSpecificsXml(set: LegoSet): string {
+  const pairs = ebayItemSpecifics(set);
+  return `<ItemSpecifics>${pairs
+    .map(
+      ([name, value]) =>
+        `<NameValueList><Name>${escapeXml(name)}</Name><Value>${escapeXml(value)}</Value></NameValueList>`,
+    )
+    .join("")}</ItemSpecifics>`;
+}
+
+type StoreCat = { id: string; name: string };
+
+async function listEbayStoreCategories(token: string): Promise<StoreCat[]> {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<GetStoreRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <CategoryStructureOnly>true</CategoryStructureOnly>
+</GetStoreRequest>`;
+  const res = await fetch("https://api.ebay.com/ws/api.dll", {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/xml",
+      "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
+      "X-EBAY-API-CALL-NAME": "GetStore",
+      "X-EBAY-API-SITEID": "3",
+      "X-EBAY-API-IAF-TOKEN": token,
+    },
+    body: xml,
+  });
+  const body = await res.text();
+  const out: StoreCat[] = [];
+  const blocks = body.split(/<CustomCategory>/i).slice(1);
+  for (const block of blocks) {
+    const id = block.match(/<CategoryID>([^<]+)<\/CategoryID>/i)?.[1]?.trim();
+    const name = block.match(/<Name>([^<]+)<\/Name>/i)?.[1]?.trim();
+    if (id && name) out.push({ id, name });
+  }
+  return out;
+}
+
+function pickStoreCategory(cats: StoreCat[], set: LegoSet): StoreCat | null {
+  const needles = [set.category, set.subCategory, set.theme, set.itemType === "minifig" ? "Minifigure" : "Set"]
+    .map((s) => s?.trim().toLowerCase())
+    .filter((s): s is string => Boolean(s));
+  if (!needles.length || !cats.length) return null;
+  const exact = cats.find((c) => needles.includes(c.name.toLowerCase()));
+  if (exact) return exact;
+  return (
+    cats.find((c) => needles.some((n) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase()))) ?? null
+  );
+}
+
+function storefrontXml(cat: StoreCat | null): string {
+  if (!cat) return "";
+  return `<Storefront><StoreCategoryID>${escapeXml(cat.id)}</StoreCategoryID></Storefront>`;
+}
   if (c === "new_sealed") return 1000;
   if (c === "new_opened") return 1500;
   return 3000;
@@ -163,14 +262,23 @@ export async function publishToEbay(
   const shipService =
     market.id === "EBAY_GB" ? "UK_OtherCourier" : market.id === "EBAY_DE" ? "DE_DHLPaket" : "USPSPriority";
 
+  let storeCat: StoreCat | null = null;
+  try {
+    storeCat = pickStoreCategory(await listEbayStoreCategories(token), set);
+  } catch {
+    storeCat = null;
+  }
+
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <ErrorLanguage>en_US</ErrorLanguage>
+  <ErrorLanguage>en_GB</ErrorLanguage>
   <WarningLevel>High</WarningLevel>
   <Item>
     <Title>${escapeXml(draft.title)}</Title>
     <Description><![CDATA[${draft.descriptionHtml}]]></Description>
     <PrimaryCategory><CategoryID>${draft.categoryId}</CategoryID></PrimaryCategory>
+    ${itemSpecificsXml(set)}
+    ${storefrontXml(storeCat)}
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
     <CategoryMappingAllowed>true</CategoryMappingAllowed>
     <ConditionID>${draft.conditionId}</ConditionID>
