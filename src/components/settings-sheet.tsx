@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -22,10 +22,12 @@ import {
   BAUD_RATES,
   CONNECTION_MODES,
   DPI_OPTIONS,
+  LABEL_SIZE_GROUPS,
   LABEL_SIZES,
   PRINT_LANGUAGES,
   clampDarkness,
   isHostPrint,
+  labelSizeOf,
   type BaudRate,
   type ConnectionMode,
   type Dpi,
@@ -288,7 +290,7 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Set up for Brother QL-1110NWB using the Software Developer ESC/P command set (binary .prn over USB). Brother print service uses the installed driver instead. DK roll sizes are listed below. ZPL / TSPL / EPL stay available for other printers.
+              QL-1110NWB with a 62 mm continuous roll. Default size is 62 mm continuous · 50 mm cut. 103 × 164 mm is a different roll and will be rejected.
             </p>
             <div className="space-y-2">
               <Label>Language</Label>
@@ -322,10 +324,19 @@ export function SettingsSheet() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {LABEL_SIZES.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.label}
-                      </SelectItem>
+                    {LABEL_SIZE_GROUPS.map((group) => (
+                      <SelectGroup key={group.heading}>
+                        <SelectLabel>{group.heading}</SelectLabel>
+                        {group.ids.map((id) => {
+                          const s = LABEL_SIZES.find((x) => x.id === id);
+                          if (!s) return null;
+                          return (
+                            <SelectItem key={id} value={id}>
+                              {s.label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
                     ))}
                   </SelectContent>
                 </Select>
@@ -399,6 +410,11 @@ export function SettingsSheet() {
                 </div>
               )}
             </div>
+            {labelSizeOf(printer.sizeId).tapeWidthMm !== 62 ? (
+              <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                Selected size is for {labelSizeOf(printer.sizeId).tapeWidthMm} mm tape. The printer will reject this while a 62 mm continuous roll is installed.
+              </p>
+            ) : null}
             {printer.lastPrinterName ? (
               <p className="text-xs text-muted">Last printer: {printer.lastPrinterName}</p>
             ) : null}

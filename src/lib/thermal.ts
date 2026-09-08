@@ -1,9 +1,10 @@
 import type { LabelLot } from "./label.ts";
 import {
   clampDarkness,
-  isHostPrint,
   labelSizeOf,
   languageFileExt,
+  sizeIdForPrinter,
+  hostPageSize,
   type BaudRate,
   type ConnectionMode,
   type Dpi,
@@ -315,20 +316,20 @@ export function generateEscp(lot: LabelLot, job: Pick<ThermalJob, "sizeId" | "co
   const size = labelSizeOf(job.sizeId);
   const { code, tag, caption, name, num, locationMode } = fields(lot);
   const n = copiesOf(job.copies);
-  const heightMm = size.heightIn * 25.4;
-  const widthMm = size.widthIn * 25.4;
-  // Page length is feed-direction size in 1/300" dots, minus 6 mm (72 dots) unprintable margins.
-  const pageDots = Math.max(48, Math.min(11999, dots300(heightMm) - 72));
+  // Portrait on 62 mm tape: print across the roll, feed is the cut length.
+  // Landscape only on 103 mm tape when the label is taller than it is wide.
+  const landscape = size.tapeWidthMm >= 100 && size.heightMm > size.widthMm + 1;
+  const feedMm = landscape ? size.widthMm : size.heightMm;
+  const pageDots = Math.max(48, Math.min(11999, dots300(feedMm) - 72));
   const [pL, pH] = le16(pageDots);
-  const barH = Math.min(480, Math.max(48, Math.round(dots300(heightMm) * 0.32)));
+  const barH = Math.min(480, Math.max(48, Math.round(dots300(feedMm) * 0.32)));
   const [hL, hH] = le16(barH);
   const title = escpAscii(locationMode ? caption : name);
   const line2 = escpAscii(locationMode ? tag : `${tag} ${num}`.trim());
   const skuLine = escpAscii(caption);
   const barcodeData = escpAscii(code).slice(0, 64) || "X";
-  // Landscape when the label is taller than it is wide (text reads along the tape).
-  const landscape = heightMm > widthMm + 1;
   const leftPad = 18;
+
 
   const out: number[] = [];
   const push = (...bytes: number[]) => {
@@ -405,9 +406,11 @@ export function generateEscp(lot: LabelLot, job: Pick<ThermalJob, "sizeId" | "co
 }
 
 export function buildThermalLabel(lot: LabelLot, job: ThermalJob): ThermalPayload {
+  const sizeId = sizeIdForPrinter(job.sizeId, job.language);
+  const fitted = { ...job, sizeId };
   const { code } = fields(lot);
-  if (job.language === "escp") {
-    const bytes = generateEscp(lot, job);
+  if (fitted.language === "escp") {
+    const bytes = generateEscp(lot, fitted);
     return {
       language: "escp",
       text: Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
@@ -416,9 +419,9 @@ export function buildThermalLabel(lot: LabelLot, job: ThermalJob): ThermalPayloa
     };
   }
   const language: "zpl" | "tspl" | "epl" =
-    job.language === "tspl" || job.language === "epl" ? job.language : "zpl";
+    fitted.language === "tspl" || fitted.language === "epl" ? fitted.language : "zpl";
   const text =
-    language === "tspl" ? generateTspl(lot, job) : language === "epl" ? generateEpl(lot, job) : generateZpl(lot, job);
+    language === "tspl" ? generateTspl(lot, fitted) : language === "epl" ? generateEpl(lot, fitted) : generateZpl(lot, fitted);
   return {
     language,
     text,
@@ -492,13 +495,17 @@ export async function printThermal(lot: LabelLot, job: ThermalJob): Promise<"pri
   }
   if (!code.trim()) throw new Error("Nothing to barcode.");
   const copies = copiesOf(job.copies);
-  if (isHostPrint(job.language)) {
+  const sizeId = sizeIdForPrinter(job.sizeId, job.language);
+  const fitted = { ...job, sizeId, copies };
+  if (job.language === "brother") {
+    return printThermal(lot, { ...fitted, language: "escp" });
+  }
+  if (job.language === "system") {
     const { printLabelSheets } = await import("./label.ts");
-    const size = labelSizeOf(job.sizeId);
-    printLabelSheets(lot, copies, { widthIn: size.widthIn, heightIn: size.heightIn });
+    printLabelSheets(lot, copies, hostPageSize(sizeId));
     return "printed";
   }
-  const payload = buildThermalLabel(lot, { ...job, copies });
+  const payload = buildThermalLabel(lot, fitted);
   const connection = effectiveConnection(job.connection);
   if (connection === "download") {
     downloadLabel(payload);

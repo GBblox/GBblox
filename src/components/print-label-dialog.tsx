@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { code128Svg } from "@/lib/barcode";
 import { itemNumberDisplay, itemTypeLabel } from "@/lib/format";
 import type { LabelBarcodeField, LabelLot } from "@/lib/label";
@@ -20,12 +20,14 @@ import {
   BAUD_RATES,
   CONNECTION_MODES,
   DPI_OPTIONS,
+  LABEL_SIZE_GROUPS,
   LABEL_SIZES,
   PRINT_LANGUAGES,
   clampDarkness,
   isHostPrint,
   labelSizeOf,
   languageFileExt,
+  sizeIdForPrinter,
   type BaudRate,
   type ConnectionMode,
   type Dpi,
@@ -64,6 +66,12 @@ export function PrintLabelDialog({
     if (!open || !lot) return;
     setBarcodeField(lot.barcodeField === "location" && lot.location?.trim() ? "location" : "sku");
   }, [open, lot?.sku, lot?.location, lot?.barcodeField]);
+
+  useEffect(() => {
+    if (!open) return;
+    const next = sizeIdForPrinter(printer.sizeId, printer.language);
+    if (next !== printer.sizeId) printer.setPrinter({ sizeId: next });
+  }, [open, printer.language, printer.sizeId, printer.setPrinter]);
 
   const printLot: LabelLot | null = lot ? { ...lot, barcodeField } : null;
   const payload = printLot ? labelBarcodePayload(printLot) : null;
@@ -161,7 +169,7 @@ export function PrintLabelDialog({
           <DialogHeader>
             <DialogTitle>Print label</DialogTitle>
             <DialogDescription>
-              {size.label} Code 128 of the SKU or location. Brother ESC/P talks to the QL-1110NWB over USB as binary .prn. Brother print service uses the system driver. ZPL, TSPL, or EPL stay available for other thermal printers.
+              {size.label}. Jobs must match the roll in the printer — 62 mm continuous, not 103 × 164 mm.
             </DialogDescription>
           </DialogHeader>
 
@@ -253,10 +261,19 @@ export function PrintLabelDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {LABEL_SIZES.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.label}
-                        </SelectItem>
+                      {LABEL_SIZE_GROUPS.map((group) => (
+                        <SelectGroup key={group.heading}>
+                          <SelectLabel>{group.heading}</SelectLabel>
+                          {group.ids.map((id) => {
+                            const s = LABEL_SIZES.find((x) => x.id === id);
+                            if (!s) return null;
+                            return (
+                              <SelectItem key={id} value={id}>
+                                {s.label}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
@@ -339,6 +356,19 @@ export function PrintLabelDialog({
                 </div>
               </div>
 
+              {size.tapeWidthMm !== 62 ? (
+                <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                  This job is {size.widthMm} × {size.heightMm} mm on {size.tapeWidthMm} mm tape. The QL-1110NWB rejects it when a 62 mm continuous roll is loaded (the 103 × 164 mm error). Switch to 62 mm continuous.
+                </p>
+              ) : size.continuous ? (
+                <p className="text-xs leading-relaxed text-muted">
+                  62 mm continuous · {size.heightMm} mm cut. Matches a 62 mm roll. If you use Brother print service, pick 62 mm paper in the print dialog — not 103 × 164 mm.
+                </p>
+              ) : (
+                <p className="text-xs leading-relaxed text-muted">
+                  62 × {size.heightMm} mm die-cut. Use 62 mm continuous · 50 mm cut if that is the roll in the printer.
+                </p>
+              )}
               {thermal && printer.connection === "usb" && !usbOk && (
                 <p className="text-xs leading-relaxed text-muted">
                   USB needs Chrome or Edge on a secure page. This preview downloads a .{ext} file instead.

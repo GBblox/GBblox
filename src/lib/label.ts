@@ -2,8 +2,8 @@ import { code128Svg } from "./barcode";
 import { itemNumberDisplay, itemTypeLabel } from "./format";
 import type { ItemType } from "./types";
 
-export const LABEL_WIDTH_IN = 4;
-export const LABEL_HEIGHT_IN = 2;
+export const LABEL_WIDTH_IN = 62 / 25.4;
+export const LABEL_HEIGHT_IN = 50 / 25.4;
 
 export type LabelBarcodeField = "sku" | "location";
 
@@ -37,9 +37,15 @@ export function labelBarcodePayload(lot: LabelLot): {
 }
 
 export type LabelPageSize = {
-  widthIn: number;
-  heightIn: number;
+  widthMm: number;
+  heightMm: number;
 };
+
+export const LABEL_PAGE_62_CONT: LabelPageSize = { widthMm: 62, heightMm: 50 };
+
+function trimMm(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -77,28 +83,28 @@ export function labelMarkup(lot: LabelLot): string {
 export function labelPrintDocument(
   lot: LabelLot,
   copies = 1,
-  size: LabelPageSize = { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN },
+  size: LabelPageSize = LABEL_PAGE_62_CONT,
 ): string {
   const n = Math.min(99, Math.max(1, Math.floor(copies) || 1));
   const sheets = Array.from({ length: n }, () => labelMarkup(lot)).join("\n");
-  const w = size.widthIn;
-  const h = size.heightIn;
-  const namePt = h >= 6 ? 22 : h >= 3 ? 18 : h >= 2 ? 16 : 12;
-  const skuPt = h >= 2 ? 11 : 9;
-  const metaPt = h >= 2 ? 9 : 8;
+  const wMm = Math.round(size.widthMm * 10) / 10;
+  const hMm = Math.round(size.heightMm * 10) / 10;
+  const namePt = hMm >= 150 ? 22 : hMm >= 75 ? 18 : hMm >= 50 ? 16 : 12;
+  const skuPt = hMm >= 50 ? 11 : 9;
+  const metaPt = hMm >= 50 ? 9 : 8;
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Label ${escapeHtml(labelBarcodePayload(lot).caption)}</title>
+<title>GBblox ${trimMm(wMm)}mm x ${trimMm(hMm)}mm</title>
 <style>
-  @page { size: ${w}in ${h}in; margin: 0; }
+  @page { size: ${trimMm(wMm)}mm ${trimMm(hMm)}mm; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  html, body { margin: 0; padding: 0; background: #fff; color: #111; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #111; width: ${trimMm(wMm)}mm; height: ${trimMm(hMm)}mm; }
   .label {
-    width: ${w}in;
-    height: ${h}in;
-    padding: 0.14in 0.18in 0.1in;
+    width: ${trimMm(wMm)}mm;
+    height: ${trimMm(hMm)}mm;
+    padding: 2mm 3mm 1.5mm;
     display: flex;
     flex-direction: column;
     page-break-after: always;
@@ -117,16 +123,16 @@ export function labelPrintDocument(
   }
   .label.location .meta { justify-content: center; }
   .name {
-    margin: 0.08in 0 0.06in;
+    margin: 1.5mm 0 1mm;
     font-size: ${namePt}pt;
     font-weight: 800;
     line-height: 1.15;
-    max-height: ${h >= 3 ? "0.8in" : h >= 2 ? "0.48in" : "0.28in"};
+    max-height: ${hMm >= 75 ? "20mm" : hMm >= 50 ? "12mm" : "7mm"};
     overflow: hidden;
   }
   .barcode {
     flex: 1;
-    min-height: ${h >= 2 ? "0.7in" : "0.32in"};
+    min-height: ${hMm >= 50 ? "18mm" : "8mm"};
     display: flex;
     align-items: stretch;
   }
@@ -159,7 +165,7 @@ ${sheets}
 export function printLabelSheets(
   lot: LabelLot,
   copies = 1,
-  size: LabelPageSize = { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN },
+  size: LabelPageSize = LABEL_PAGE_62_CONT,
 ): void {
   const html = labelPrintDocument(lot, copies, size);
   const iframe = document.createElement("iframe");

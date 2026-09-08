@@ -4,19 +4,49 @@ import { useShallow } from "zustand/react/shallow";
 
 const mm = (n: number) => n / 25.4;
 
+function size<I extends string>(
+  id: I,
+  widthMm: number,
+  heightMm: number,
+  tapeWidthMm: number,
+  continuous: boolean,
+  label: string,
+) {
+  return {
+    id,
+    widthMm,
+    heightMm,
+    tapeWidthMm,
+    continuous,
+    label,
+    widthIn: mm(widthMm),
+    heightIn: mm(heightMm),
+  } as const;
+}
+
+/** QL-1110NWB sizes. Tape width must match the roll in the printer. */
 export const LABEL_SIZES = [
-  { id: "dk-62x29", widthIn: mm(62), heightIn: mm(29), label: "62 × 29 mm" },
-  { id: "dk-62x42", widthIn: mm(62), heightIn: mm(42), label: "62 × 42 mm" },
-  { id: "dk-11209", widthIn: mm(29), heightIn: mm(62), label: "DK-11209 · 29 × 62 mm" },
-  { id: "dk-11201", widthIn: mm(29), heightIn: mm(90.3), label: "DK-11201 · 29 × 90 mm" },
-  { id: "dk-11208", widthIn: mm(38), heightIn: mm(90.3), label: "DK-11208 · 38 × 90 mm" },
-  { id: "dk-11202", widthIn: mm(62), heightIn: mm(100), label: "DK-11202 · 62 × 100 mm" },
-  { id: "dk-22205", widthIn: mm(62), heightIn: mm(50), label: "DK-22205 · 62 mm continuous (50 mm)" },
-  { id: "dk-2214", widthIn: mm(103), heightIn: mm(50), label: "DK-2214 · 103 mm continuous (50 mm)" },
-  { id: "dk-1241", widthIn: mm(102), heightIn: mm(152), label: "DK-1241 · 102 × 152 mm (4×6)" },
+  size("dk-22205", 62, 50, 62, true, "62 mm continuous · 50 mm cut"),
+  size("dk-22205-80", 62, 80, 62, true, "62 mm continuous · 80 mm cut"),
+  size("dk-62x29", 62, 29, 62, false, "62 × 29 mm die-cut"),
+  size("dk-62x42", 62, 42, 62, false, "62 × 42 mm die-cut"),
+  size("dk-11202", 62, 100, 62, false, "DK-11202 · 62 × 100 mm die-cut"),
+  size("dk-11209", 29, 62, 29, false, "DK-11209 · 29 × 62 mm"),
+  size("dk-11201", 29, 90.3, 29, false, "DK-11201 · 29 × 90 mm"),
+  size("dk-11208", 38, 90.3, 38, false, "DK-11208 · 38 × 90 mm"),
+  size("dk-2214", 103, 50, 103, true, "DK-2214 · 103 mm continuous (50 mm cut)"),
+  size("dk-1241", 102, 152, 103, false, "DK-1241 · 102 × 152 mm"),
+  size("dk-11241", 103, 164, 103, false, "DK-11241 · 103 × 164 mm die-cut"),
 ] as const;
 
 export type LabelSizeId = (typeof LABEL_SIZES)[number]["id"];
+export type LabelSize = (typeof LABEL_SIZES)[number];
+
+export const LABEL_SIZE_GROUPS: { heading: string; ids: readonly LabelSizeId[] }[] = [
+  { heading: "62 mm tape", ids: ["dk-22205", "dk-22205-80", "dk-62x29", "dk-62x42", "dk-11202"] },
+  { heading: "29 / 38 mm tape", ids: ["dk-11209", "dk-11201", "dk-11208"] },
+  { heading: "103 mm tape", ids: ["dk-2214", "dk-1241", "dk-11241"] },
+];
 
 export const PRINT_LANGUAGES = [
   { id: "escp", label: "Brother ESC/P", hint: "QL-1110NWB · Software Developer ESC/P commands" },
@@ -55,7 +85,7 @@ export type PrinterSettings = {
 
 export const DEFAULT_PRINTER: PrinterSettings = {
   language: "escp",
-  sizeId: "dk-62x29",
+  sizeId: "dk-22205",
   dpi: 300,
   darkness: 15,
   connection: "usb",
@@ -65,10 +95,28 @@ export const DEFAULT_PRINTER: PrinterSettings = {
 
 const LEGACY_SIZE: Record<string, LabelSizeId> = {
   "4x1": "dk-62x29",
-  "4x2": "dk-62x29",
-  "4x3": "dk-62x29",
-  "4x6": "dk-1241",
+  "4x2": "dk-22205",
+  "4x3": "dk-11202",
+  "4x6": "dk-22205",
 };
+
+export function sizeIdForPrinter(id: LabelSizeId | string, language: PrintLanguage | string): LabelSizeId {
+  const size = labelSizeOf(id);
+  if (language === "zpl" || language === "tspl" || language === "epl") return size.id;
+  if (size.tapeWidthMm === 62) return size.id;
+  return DEFAULT_PRINTER.sizeId;
+}
+
+export function sizeMatchesInstalledTape(id: LabelSizeId | string): boolean {
+  return labelSizeOf(id).tapeWidthMm === 62;
+}
+
+/** Named QL-1110NWB driver papers for 62 mm tape. 62×50 is not in the driver and falls back to 103×164. */
+export function hostPageSize(id: LabelSizeId | string): { widthMm: number; heightMm: number } {
+  const size = labelSizeOf(sizeIdForPrinter(id, "brother"));
+  if (size.heightMm >= 80) return { widthMm: 62, heightMm: 100 };
+  return { widthMm: 62, heightMm: 29 };
+}
 
 type PrinterState = PrinterSettings & {
   setPrinter: (patch: Partial<PrinterSettings>) => void;
@@ -83,7 +131,7 @@ export const usePrinterStore = create<PrinterState>()(
     {
       name: "brickshelf-printer",
       skipHydration: true,
-      version: 5,
+      version: 7,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<PrinterSettings> & { sizeId?: string };
         const language =
@@ -93,7 +141,7 @@ export const usePrinterStore = create<PrinterState>()(
         return {
           ...DEFAULT_PRINTER,
           ...p,
-          sizeId: p.sizeId && LABEL_SIZES.some((s) => s.id === p.sizeId) ? p.sizeId : DEFAULT_PRINTER.sizeId,
+          sizeId: DEFAULT_PRINTER.sizeId,
           language,
           dpi: language === "escp" ? 300 : p.dpi === 203 || p.dpi === 300 ? p.dpi : 300,
           lastPrinterName: p.lastPrinterName?.trim() || DEFAULT_PRINTER.lastPrinterName,
@@ -134,7 +182,7 @@ export function usePrinter(): PrinterSettings & { setPrinter: PrinterState["setP
   );
 }
 
-export function labelSizeOf(id: LabelSizeId | string = "dk-62x29"): (typeof LABEL_SIZES)[number] {
+export function labelSizeOf(id: LabelSizeId | string = DEFAULT_PRINTER.sizeId): LabelSize {
   const mapped = LEGACY_SIZE[id] ?? id;
   return LABEL_SIZES.find((s) => s.id === mapped) ?? LABEL_SIZES[0];
 }
@@ -156,4 +204,12 @@ export function languageFileExt(id: PrintLanguage): "zpl" | "tspl" | "epl" | "pr
 export function clampDarkness(n: number): number {
   if (!Number.isFinite(n)) return DEFAULT_PRINTER.darkness;
   return Math.min(30, Math.max(0, Math.round(n)));
+}
+
+export function cssPageSize(size: Pick<LabelSize, "widthMm" | "heightMm">): string {
+  return `${trimMm(size.widthMm)}mm ${trimMm(size.heightMm)}mm`;
+}
+
+function trimMm(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }

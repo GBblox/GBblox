@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { labelSizeOf } from "./printer-settings.ts";
+import { labelSizeOf, sizeIdForPrinter } from "./printer-settings.ts";
 import { barcodeModuleWidth, buildThermalLabel, generateEpl, generateEscp, generateTspl, generateZpl, labelLayout, wrapWords } from "./thermal.ts";
 
 const lot = {
@@ -84,6 +84,18 @@ describe("thermal labels", () => {
     assert.equal(p.bytes[1], 0x69);
     assert.equal(p.bytes[2], 0x61);
     assert.equal(p.bytes[3], 0x00);
+    assert.equal(sizeIdForPrinter("dk-11241", "escp"), "dk-22205");
+    assert.equal(sizeIdForPrinter("dk-1241", "brother"), "dk-22205");
+    assert.equal(sizeIdForPrinter("4x6", "escp"), "dk-22205");
+    const coerced = buildThermalLabel(lot, {
+      ...job,
+      sizeId: "dk-11241",
+      language: "escp",
+      connection: "usb",
+      baudRate: 9600,
+    });
+    const coercedHex = Array.from(coerced.bytes ?? [], (b) => b.toString(16).padStart(2, "0")).join(" ");
+    assert.match(coercedHex, /^1b 69 61 00 1b 40 1b 69 4c 00/);
   });
 
   it("builds Brother ESC/P for the QL-1110NWB", () => {
@@ -102,6 +114,12 @@ describe("thermal labels", () => {
     assert.ok(hex.includes(skuHex));
     const twice = generateEscp(lot, { sizeId: "dk-62x29", copies: 2 });
     assert.equal(twice.length, bytes.length * 2);
+    const cont = generateEscp(lot, { sizeId: "dk-22205", copies: 1 });
+    const contHex = Array.from(cont, (b) => b.toString(16).padStart(2, "0")).join(" ");
+    assert.match(contHex, /^1b 69 61 00 1b 40 1b 69 4c 00/);
+    const wide = generateEscp(lot, { sizeId: "dk-11241", copies: 1 });
+    const wideHex = Array.from(wide, (b) => b.toString(16).padStart(2, "0")).join(" ");
+    assert.match(wideHex, /1b 69 4c 01/);
   });
 
   it("wraps long names", () => {

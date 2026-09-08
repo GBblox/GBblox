@@ -50,6 +50,25 @@ export function SelectContent({
   );
 }
 
+export function SelectGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Group>) {
+  return <SelectPrimitive.Group className={cn("p-1", className)} {...props} />;
+}
+
+export function SelectLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      className={cn("px-2 py-1.5 text-xs font-semibold text-muted", className)}
+      {...props}
+    />
+  );
+}
+
 export function SelectItem({
   className,
   children,
@@ -70,3 +89,4 @@ export function SelectItem({
     </SelectPrimitive.Item>
   );
 }
+
