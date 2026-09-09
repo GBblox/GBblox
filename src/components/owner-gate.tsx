@@ -6,7 +6,7 @@ import { GROK_PROVIDERS, signIn, signOut } from "@/lib/auth/client";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { isOwnerEmail, OWNER_EMAIL } from "@/lib/owner";
+import { GOOGLE_LOGIN_PAUSED, isOwnerEmail, OWNER_EMAIL } from "@/lib/owner";
 
 const GOOGLE = GROK_PROVIDERS.find((p) => p.idp === "google");
 
@@ -112,6 +112,7 @@ export function NotAuthorised({ email }: { email?: string | null }) {
 }
 
 export function OwnerGate({ children }: { children: ReactNode }) {
+  if (GOOGLE_LOGIN_PAUSED || import.meta.env.DEV) return <>{children}</>;
   const { sessionUser } = useRouteContext({ from: "__root__" });
   const { user, isPending } = useCurrentUserState();
   const email = user?.primaryEmail ?? sessionUser?.email ?? null;

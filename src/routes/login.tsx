@@ -1,10 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { LoginScreen, SignedInOwnerRedirect } from "@/components/owner-gate";
 import { authEnabled } from "@/lib/auth/client";
+import { GOOGLE_LOGIN_PAUSED } from "@/lib/owner";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
 function Login() {
+  if (GOOGLE_LOGIN_PAUSED) return <Navigate to="/" />;
   return (
     <SignedInOwnerRedirect>
       {authEnabled ? (

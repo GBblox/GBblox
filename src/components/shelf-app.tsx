@@ -156,14 +156,16 @@ export function ShelfApp() {
 
   useEffect(() => {
     let live = true;
-    void seedDemoCatalog({ data: {} }).then((res) => {
-      if (!live || !res.added) return;
-      qc.invalidateQueries({ queryKey: ["sets"] });
-      settings.setSettings({
-        locations: mergeLocationOptions(settings.locations ?? [], res.locations),
-      });
-      toast.success(`Loaded ${res.added} demo lots`);
-    });
+    void seedDemoCatalog({ data: {} })
+      .then((res) => {
+        if (!live || !res.added) return;
+        qc.invalidateQueries({ queryKey: ["sets"] });
+        settings.setSettings({
+          locations: mergeLocationOptions(settings.locations ?? [], res.locations),
+        });
+        toast.success(`Loaded ${res.added} demo lots`);
+      })
+      .catch(() => undefined);
     return () => {
       live = false;
     };
@@ -765,7 +767,7 @@ function SetCard({
           <img
             src={set.imageUrl}
             alt={set.name}
-            className="size-full object-contain p-2 outline outline-1 -outline-offset-1 outline-fg/10"
+            className="size-full object-contain p-[10px] outline outline-1 -outline-offset-1 outline-fg/10"
           />
         ) : (
           <div className="flex size-full items-center justify-center text-subtle">

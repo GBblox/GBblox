@@ -92,6 +92,11 @@ export async function requireUserId(bearerToken?: string): Promise<string> {
     return DEV_USER_ID;
   }
   const user = await getSessionUser(bearerToken);
-  if (!user) throw new UnauthorizedError();
+  if (!user) {
+    const { isWorkspacePreview } = await import("../env.server");
+    const { GOOGLE_LOGIN_PAUSED } = await import("../owner");
+    if (GOOGLE_LOGIN_PAUSED || isWorkspacePreview()) return DEV_USER_ID;
+    throw new UnauthorizedError();
+  }
   return user.id;
 }

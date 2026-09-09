@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Boxes, ChevronDown, Layers, LayoutGrid, List, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BatchNumberSelect } from "@/components/batch-select";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,11 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { firstBatchError, paymentsForPlatform, validateBatch } from "@/lib/batch-rules";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, itemNumberDisplay } from "@/lib/format";
 import { createBatch, deleteBatch, listBatches, nextBatchNumber, updateBatch } from "@/lib/server/batches";
 import { updateSet } from "@/lib/server/sets";
 import { BATCH_PAYMENTS, BATCH_PLATFORMS, type LegoSet, type PurchaseBatch } from "@/lib/types";
@@ -47,6 +50,8 @@ export function BatchesPanel({
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [layout, setLayout] = useState<"gallery" | "list">("list");
+  const [q, setQ] = useState("");
   const batchesQuery = useQuery({
     queryKey: ["batches"],
     queryFn: () => listBatches(),
@@ -57,21 +62,64 @@ export function BatchesPanel({
     () => (selected ? lots.filter((lot) => lot.batchNumber === selected) : []),
     [lots, selected],
   );
+  const lotsByBatch = useMemo(() => {
+    const map = new Map<string, LegoSet[]>();
+    for (const lot of lots) {
+      if (!lot.batchNumber) continue;
+      const arr = map.get(lot.batchNumber);
+      if (arr) arr.push(lot);
+      else map.set(lot.batchNumber, [lot]);
+    }
+    return map;
+  }, [lots]);
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return batches;
+    return batches.filter((batch) => {
+      const hay = [
+        batch.batchNumber,
+        batch.sellerName,
+        batch.orderNumber,
+        batch.purchasedOn,
+        platformLabel(batch.platform),
+        paymentLabel(batch.paymentMethod),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [batches, q]);
 
   return (
     <section>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3">
         <div>
-          <h1 className="font-display text-[26px] leading-[1.15] font-extrabold tracking-tight text-navy">Batches</h1>
+          <h1 className="font-display text-[26px] leading-[1.15] font-extrabold tracking-tight text-navy">
+            {selectedBatch ? selectedBatch.batchNumber : "Batches"}
+          </h1>
           <p className="mt-2 text-[16px] leading-snug text-fg">
-            Bulk buys that items are split from. Attach a batch number on each lot.
+            {selectedBatch
+              ? `${members.length} items from this bulk buy`
+              : `Bulk buys that items are split from · ${visible.length} shown`}
           </p>
         </div>
-        {!creating ? (
-          <Button type="button" onClick={() => setCreating(true)}>
+        {!creating && !selectedBatch ? (
+          <Button type="button" className="w-full" onClick={() => setCreating(true)}>
             <Plus />
             New batch
           </Button>
+        ) : null}
+        {!creating && !selectedBatch ? (
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search batches"
+              className="pl-9"
+              aria-label="Search batches"
+            />
+          </div>
         ) : null}
       </div>
 
@@ -89,52 +137,111 @@ export function BatchesPanel({
           batch={selectedBatch}
           lots={members}
           recent={lots}
+          layout={layout}
+          onLayout={setLayout}
           onBack={() => setSelected(null)}
           onOpenLot={onOpenLot}
           onDeleted={() => setSelected(null)}
         />
       ) : (
-        <>
+        <div className="mt-5">
           {batchesQuery.isLoading ? (
-            <p className="mt-8 text-sm text-muted">Loading batches…</p>
+            <ul className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <li key={i} className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
+                  <Skeleton className="size-[60px] rounded-sm" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : batches.length === 0 ? (
-            <p className="mt-8 text-center text-sm text-muted">No batches yet. Create one when you buy a bulk lot.</p>
+            <div className="mt-1 rounded-md bg-surface px-6 py-16 text-center shadow-[var(--shadow-border)]">
+              <span className="mx-auto flex size-16 items-center justify-center rounded-md bg-primary text-navy">
+                <Layers className="size-8" />
+              </span>
+              <h2 className="mt-4 font-display text-[26px] leading-[1.15] font-extrabold tracking-tight text-navy">
+                No batches yet
+              </h2>
+              <p className="mx-auto mt-2 max-w-sm text-[16px] leading-snug text-fg">
+                Create a batch when you buy a bulk lot, then attach it on each item.
+              </p>
+              <Button className="mt-6" onClick={() => setCreating(true)}>
+                <Plus />
+                New batch
+              </Button>
+            </div>
+          ) : visible.length === 0 ? (
+            <p className="py-16 text-center text-sm text-muted">No batches match that search.</p>
           ) : (
-            <ul className="mt-5 overflow-hidden rounded-md bg-white shadow-[var(--shadow-border)]">
-              {batches.map((batch) => {
-                const count = lots.filter((lot) => lot.batchNumber === batch.batchNumber).length;
-                return (
-                  <li key={batch.id} className="border-b border-border last:border-b-0">
-                    <button
-                      type="button"
-                      onClick={() => setSelected(batch.batchNumber)}
-                      className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-surface-2"
-                    >
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-navy">
-                        <Layers className="size-5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-mono text-sm font-semibold">{batch.batchNumber}</span>
-                        <span className="block text-sm text-muted">
-                          {batch.purchasedOn} · {platformLabel(batch.platform)} · {batch.sellerName}
-                        </span>
-                      </span>
-                      <span className="text-right">
-                        <span className="block text-sm font-semibold">
-                          {batch.price != null ? formatMoney(batch.price, batch.currency) : "—"}
-                        </span>
-                        <span className="text-xs text-muted">{count} items</span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+            <ul className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+              {visible.map((batch) => (
+                <li key={batch.id} className="border-b border-border last:border-b-0">
+                  <BatchListRow
+                    batch={batch}
+                    lots={lotsByBatch.get(batch.batchNumber) ?? []}
+                    onOpen={() => setSelected(batch.batchNumber)}
+                  />
+                </li>
+              ))}
             </ul>
           )}
-          <RecentItems lots={lots} onOpenLot={onOpenLot} />
-        </>
+        </div>
       )}
     </section>
+  );
+}
+
+function platformLogo(platform: PurchaseBatch["platform"]) {
+  if (platform === "ebay") return "/ebay-logo.png?v=2";
+  if (platform === "facebook") return "/facebook-marketplace.svg";
+  return "/gumtree-logo.svg";
+}
+
+function PlatformThumb({ platform }: { platform: PurchaseBatch["platform"] }) {
+  return (
+    <span className="flex size-[60px] shrink-0 items-center justify-center overflow-hidden rounded-sm bg-white p-1.5 outline outline-1 -outline-offset-1 outline-fg/10">
+      <img
+        src={platformLogo(platform)}
+        alt={platformLabel(platform)}
+        className="max-h-full max-w-full object-contain"
+      />
+    </span>
+  );
+}
+
+function BatchListRow({
+  batch,
+  lots,
+  onOpen,
+}: {
+  batch: PurchaseBatch;
+  lots: LegoSet[];
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
+    >
+      <PlatformThumb platform={batch.platform} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold">{batch.sellerName || "Unknown seller"}</span>
+        <span className="mt-0.5 block font-mono text-[11px] text-subtle">
+          {[batch.batchNumber, batch.orderNumber.trim() || null].filter(Boolean).join(" · ")}
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-1">
+          <Badge variant="default">{lots.length} items</Badge>
+          <Badge variant="default">{paymentLabel(batch.paymentMethod)}</Badge>
+        </span>
+      </span>
+      <span className="shrink-0 font-display text-base font-extrabold tabular-nums">
+        {batch.price != null ? formatMoney(batch.price, batch.currency) : "—"}
+      </span>
+    </button>
   );
 }
 
@@ -142,6 +249,8 @@ function BatchDetail({
   batch,
   lots,
   recent,
+  layout,
+  onLayout,
   onBack,
   onOpenLot,
   onDeleted,
@@ -149,6 +258,8 @@ function BatchDetail({
   batch: PurchaseBatch;
   lots: LegoSet[];
   recent: LegoSet[];
+  layout: "gallery" | "list";
+  onLayout: (next: "gallery" | "list") => void;
   onBack: () => void;
   onOpenLot: (lot: LegoSet) => void;
   onDeleted: () => void;
@@ -194,22 +305,63 @@ function BatchDetail({
 
   return (
     <div className="mt-5 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-          All batches
-        </Button>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
-            <Pencil />
-            Edit
+      <div className="flex items-center gap-2">
+        <div className="flex overflow-hidden rounded-md shadow-[var(--shadow-border)]">
+          <Button
+            variant={layout === "gallery" ? "secondary" : "ghost"}
+            size="sm"
+            type="button"
+            className="rounded-none shadow-none"
+            aria-pressed={layout === "gallery"}
+            onClick={() => onLayout("gallery")}
+          >
+            <LayoutGrid />
+            Gallery
           </Button>
-          <Button type="button" variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
-            <Trash2 />
-            Delete
+          <Button
+            variant={layout === "list" ? "secondary" : "ghost"}
+            size="sm"
+            type="button"
+            className="rounded-none shadow-none"
+            aria-pressed={layout === "list"}
+            onClick={() => onLayout("list")}
+          >
+            <List />
+            List
           </Button>
         </div>
       </div>
-      <div className="rounded-md bg-white p-5 shadow-[var(--shadow-border)]">
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit shrink-0 px-2.5"
+          onClick={onBack}
+        >
+          <ArrowLeft />
+          All batches
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="w-fit shrink-0 px-2.5">
+              <ChevronDown />
+              Actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onSelect={() => setEditing(true)}>
+              <Pencil className="size-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setConfirmDelete(true)}>
+              <Trash2 className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="rounded-md bg-surface p-5 shadow-[var(--shadow-border)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="font-mono text-lg font-extrabold tracking-tight text-navy">{batch.batchNumber}</p>
@@ -252,44 +404,96 @@ function BatchDetail({
           </p>
         </div>
       </div>
-      <div className="rounded-md bg-white p-5 shadow-[var(--shadow-border)]">
-        <p className="text-sm font-semibold">{lots.length} items from this batch</p>
-        {lots.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">No catalog lots use this batch number yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-border">
-            {lots.map((lot) => (
-              <li key={lot.id} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenLot(lot)}
-                  className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
-                >
+      {lots.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted">No catalog lots use this batch number yet.</p>
+      ) : layout === "list" ? (
+        <ul className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+          {lots.map((lot) => (
+            <li key={lot.id} className="flex items-center border-b border-border last:border-b-0">
+              <button
+                type="button"
+                onClick={() => onOpenLot(lot)}
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
+              >
+                <span className="size-[60px] shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
                   {lot.imageUrl ? (
-                    <img src={lot.imageUrl} alt="" className="size-12 rounded-sm bg-white object-contain" />
+                    <img src={lot.imageUrl} alt="" className="size-full object-contain p-1" />
                   ) : (
-                    <span className="size-12 rounded-sm bg-surface-2" />
+                    <span className="flex size-full items-center justify-center text-subtle">
+                      <Boxes className="size-5" />
+                    </span>
                   )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{lot.name}</span>
-                    <span className="font-mono text-xs text-muted">{lot.sku}</span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{lot.name}</span>
+                  <span className="mt-0.5 block font-mono text-[11px] text-subtle">
+                    {[itemNumberDisplay(lot.setNum, lot.itemType), lot.sku].filter(Boolean).join(" · ")}
                   </span>
+                </span>
+                <span className="shrink-0 font-display text-base font-extrabold tabular-nums">
+                  {formatMoney(lot.askingPrice ?? lot.usedPrice, lot.currency)}
+                </span>
+              </button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mr-2 shrink-0"
+                disabled={unlink.isPending}
+                onClick={() => unlink.mutate(lot.id)}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {lots.map((lot) => (
+            <li key={lot.id}>
+              <article className="group flex h-full flex-col overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)] transition-[box-shadow] duration-150 ease-[var(--ease-smooth-out)] hover:shadow-[var(--shadow-border-hover)]">
+                <button type="button" onClick={() => onOpenLot(lot)} className="flex min-w-0 flex-1 flex-col text-left">
+                  <div className="relative aspect-square overflow-hidden bg-white">
+                    {lot.imageUrl ? (
+                      <img
+                        src={lot.imageUrl}
+                        alt={lot.name}
+                        className="size-full object-contain p-[10px] outline outline-1 -outline-offset-1 outline-fg/10"
+                      />
+                    ) : (
+                      <div className="flex size-full items-center justify-center text-subtle">
+                        <Boxes className="size-8" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1 border-t border-border p-3">
+                    <p className="font-mono text-xs font-medium text-link">
+                      {itemNumberDisplay(lot.setNum, lot.itemType)}
+                    </p>
+                    <p className="font-mono text-[11px] text-subtle">{lot.sku}</p>
+                    <h2 className="line-clamp-2 text-base leading-snug font-semibold">{lot.name}</h2>
+                    <p className="mt-auto font-display text-xl font-extrabold tracking-tight tabular-nums">
+                      {formatMoney(lot.askingPrice ?? lot.usedPrice, lot.currency)}
+                    </p>
+                  </div>
                 </button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mr-2"
-                  disabled={unlink.isPending}
-                  onClick={() => unlink.mutate(lot.id)}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                <div className="border-t border-border p-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    disabled={unlink.isPending}
+                    onClick={() => unlink.mutate(lot.id)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </article>
+            </li>
+          ))}
+        </ul>
+      )}
       <RecentItems
         lots={recent.filter((lot) => lot.batchNumber !== batch.batchNumber)}
         onOpenLot={onOpenLot}
@@ -352,7 +556,7 @@ function RecentItems({
   if (rows.length === 0) return null;
 
   return (
-    <div className="mt-5 rounded-md bg-white p-5 shadow-[var(--shadow-border)]">
+    <div className="mt-5 rounded-md bg-surface p-5 shadow-[var(--shadow-border)]">
       <p className="text-sm font-semibold">Recently added items</p>
       <p className="mt-1 text-xs text-muted">
         {attachTo ? `Add a lot to ${attachTo}, or pick another batch.` : "Assign a batch number to a recent lot."}
@@ -723,7 +927,7 @@ function CreateBatchForm({
 
   return (
     <form
-      className="mt-5 space-y-4 rounded-md bg-surface-2 p-4"
+      className="mt-5 space-y-4 rounded-md bg-surface p-4 shadow-[var(--shadow-border)]"
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate();

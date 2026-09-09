@@ -1,5 +1,5 @@
 import { createMiddleware } from "@tanstack/react-start";
-import { isOwnerEmail } from "@/lib/owner";
+import { GOOGLE_LOGIN_PAUSED, isOwnerEmail } from "@/lib/owner";
 
 export class ForbiddenError extends Error {
   readonly status = 403;
@@ -19,12 +19,20 @@ export const ownerMiddleware = createMiddleware({ type: "function" })
     return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
   })
   .server(async ({ next, context }) => {
-    const { getSessionUser, UnauthorizedError } = await import("@/lib/auth/verify.server");
+    const { getSessionUser, UnauthorizedError, DEV_USER_ID } = await import("@/lib/auth/verify.server");
+    const { isWorkspacePreview } = await import("@/lib/env.server");
     const user = await getSessionUser(
       "bearerToken" in context ? (context.bearerToken as string | undefined) : undefined,
     );
-    if (!user) throw new UnauthorizedError();
-    if (!isOwnerEmail(user.email)) throw new ForbiddenError();
+    if (!user) {
+      if (GOOGLE_LOGIN_PAUSED || isWorkspacePreview()) {
+        return next({ context: { userId: DEV_USER_ID, email: "" } });
+      }
+      throw new UnauthorizedError();
+    }
+    if (!GOOGLE_LOGIN_PAUSED && !isOwnerEmail(user.email) && !isWorkspacePreview()) {
+      throw new ForbiddenError();
+    }
     return next({
       context: {
         userId: user.id,
