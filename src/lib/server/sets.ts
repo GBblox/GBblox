@@ -774,6 +774,71 @@ export const refreshPrice = createServerFn({ method: "POST" }).middleware([authM
     return { set: mapSet(rows[0]), price };
   });
 
+export const fillBricklinkPrices = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
+  .validator(
+    z.object({
+      ids: z.array(z.number().int()).min(1).max(30),
+      settings: settingsSchema,
+    }),
+  )
+  .handler(async ({ data }) => {
+    const bl = bricklinkCredsFrom(data.settings);
+    const ebayApp = data.settings.ebayClientId.trim() && data.settings.ebayClientSecret.trim();
+    if (!bl && !ebayApp) throw new Error("Add BrickLink or eBay API keys in Settings to fill prices.");
+    const sql = await getSql();
+    const rows = await sql<Row>`select * from lego_sets order by id`;
+    const want = new Set(data.ids);
+    const lots = (rows ?? []).map(mapSet).filter((lot) => want.has(lot.id));
+    let filled = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (let i = 0; i < lots.length; i += 1) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 120));
+      const lot = lots[i];
+      try {
+        const price = await fetchMarketPrice({
+          setNum: lot.setNum,
+          name: lot.name,
+          marketplace: data.settings.marketplace,
+          ebayClientId: data.settings.ebayClientId,
+          ebayClientSecret: data.settings.ebayClientSecret,
+          blConsumerKey: data.settings.blConsumerKey,
+          blConsumerSecret: data.settings.blConsumerSecret,
+          blToken: data.settings.blToken,
+          blTokenSecret: data.settings.blTokenSecret,
+          itemType: lot.itemType,
+        });
+        if (price.used == null && price.new == null) {
+          skipped += 1;
+          continue;
+        }
+        const isNew = lot.condition === "new_sealed" || lot.condition === "new_opened";
+        const avg = isNew ? (price.new ?? price.used) : (price.used ?? price.new);
+        const asking = avg ?? lot.askingPrice;
+        await sql`
+          update lego_sets
+          set used_price = ${price.used},
+              used_price_min = ${price.usedMin},
+              used_price_max = ${price.usedMax},
+              used_price_source = ${price.source},
+              used_price_at = now(),
+              new_price = ${price.new},
+              new_price_min = ${price.newMin},
+              new_price_max = ${price.newMax},
+              retail_price = ${price.retail ?? lot.retailPrice},
+              asking_price = ${asking},
+              currency = ${price.currency},
+              updated_at = now()
+          where id = ${lot.id}
+        `;
+        filled += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    return { filled, skipped, failed };
+  });
+
 export const previewListing = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware])
   .validator(
     z.object({

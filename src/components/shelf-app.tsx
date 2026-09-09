@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, CheckSquare, ChevronDown, ClipboardList, LayoutGrid, Layers, List, PackageOpen, Plus, Receipt, RefreshCw, ScanBarcode, Search, Store, Users, X } from "lucide-react";
+import { Boxes, CheckSquare, ChevronDown, ClipboardList, LayoutGrid, Layers, List, PackageOpen, Plus, Receipt, RefreshCw, ScanBarcode, Search, Store, Tag, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AddSetDialog } from "@/components/add-set-dialog";
@@ -16,6 +16,7 @@ import { UserButton } from "@/lib/auth/gates";
 import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -27,9 +28,9 @@ import {
   statusBadgeVariant,
   statusLabel,
 } from "@/lib/format";
-import { listSets, seedDemoCatalog, syncListings } from "@/lib/server/sets";
+import { fillBricklinkPrices, listSets, seedDemoCatalog, syncListings } from "@/lib/server/sets";
 import { mergeLocationOptions } from "@/lib/locations";
-import { bricklinkCanSync, credentialsOf, ebayCanPublish, rehydrateSettings, useSettings } from "@/lib/settings";
+import { bricklinkCanSync, credentialsOf, ebayCanPublish, ebayIsConnected, rehydrateSettings, useSettings } from "@/lib/settings";
 import { rehydratePrinterSettings } from "@/lib/printer-settings";
 import { shelfBucket, type LegoSet, type ShelfBucket } from "@/lib/types";
 
@@ -230,6 +231,35 @@ export function ShelfApp() {
     return shelfLots.filter((s) => allow.has(categoryKey(s)));
   }, [shelfLots, grouped, allCatsChecked, activeCats]);
 
+  const fillPrices = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const creds = credentialsOf(settings);
+      const chunk = 20;
+      let filled = 0;
+      let skipped = 0;
+      let failed = 0;
+      for (let i = 0; i < ids.length; i += chunk) {
+        const res = await fillBricklinkPrices({
+          data: { ids: ids.slice(i, i + chunk), settings: creds },
+        });
+        filled += res.filled;
+        skipped += res.skipped;
+        failed += res.failed;
+      }
+      return { filled, skipped, failed, total: ids.length };
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["sets"] });
+      const bits = [`Filled BrickLink prices on ${res.filled} of ${res.total}`];
+      if (res.skipped) bits.push(`${res.skipped} had no guide`);
+      if (res.failed) bits.push(`${res.failed} failed`);
+      if (res.filled === 0 && res.failed === 0) toast.message(bits.join(" · "));
+      else if (res.failed) toast.message(bits.join(" · "));
+      else toast.success(bits.join(" · "));
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Price fill failed"),
+  });
+
   const groups = useMemo(() => {
     if (!grouped) return [["", visible] as const];
     const map = new Map<string, LegoSet[]>();
@@ -414,7 +444,7 @@ export function ShelfApp() {
               </p>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-md shadow-[var(--shadow-border)]">
               <Button
@@ -441,7 +471,7 @@ export function ShelfApp() {
               </Button>
             </div>
             </div>
-            <div className="relative shrink-0" ref={catBtnRef}>
+            <div className="relative ml-auto shrink-0" ref={catBtnRef}>
               <div className="flex origin-center overflow-hidden rounded-md shadow-[var(--shadow-border)] transition-transform duration-150 ease-[var(--ease-smooth-out)] active:scale-[0.98]">
               <Button
                 variant={grouped ? "secondary" : "ghost"}
@@ -559,53 +589,81 @@ export function ShelfApp() {
               ) : null}
             </div>
           </div>
-          {view !== "sold" && view !== "incomplete" && (ebayCanPublish(settings) || bricklinkCanSync(settings)) && sets.length > 0 ? (
-            <div className="w-fit">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={matchAll.isPending}
-                onClick={() => matchAll.mutate()}
-              >
-                {matchAll.isPending ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
-                Match listings
-              </Button>
+          {view === "sold" ? (
+            <div className="flex justify-end">
+              <div className="inline-flex w-fit overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+                <Button
+                  variant={soldType === "all" ? "secondary" : "ghost"}
+                  size="sm"
+                  type="button"
+                  className="rounded-none px-2.5 shadow-none"
+                  aria-pressed={soldType === "all"}
+                  onClick={() => setSoldType("all")}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={soldType === "set" ? "secondary" : "ghost"}
+                  size="sm"
+                  type="button"
+                  className="rounded-none px-2.5 shadow-none"
+                  aria-pressed={soldType === "set"}
+                  onClick={() => setSoldType("set")}
+                >
+                  <Boxes />
+                  Sets
+                </Button>
+                <Button
+                  variant={soldType === "minifig" ? "secondary" : "ghost"}
+                  size="sm"
+                  type="button"
+                  className="rounded-none px-2.5 shadow-none"
+                  aria-pressed={soldType === "minifig"}
+                  onClick={() => setSoldType("minifig")}
+                >
+                  <Users />
+                  Minifigures
+                </Button>
+              </div>
             </div>
           ) : null}
-          {view === "sold" ? (
-            <div className="inline-flex w-fit overflow-hidden rounded-md shadow-[var(--shadow-border)]">
-              <Button
-                variant={soldType === "all" ? "secondary" : "ghost"}
-                size="sm"
-                type="button"
-                className="rounded-none shadow-none"
-                aria-pressed={soldType === "all"}
-                onClick={() => setSoldType("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={soldType === "set" ? "secondary" : "ghost"}
-                size="sm"
-                type="button"
-                className="rounded-none shadow-none"
-                aria-pressed={soldType === "set"}
-                onClick={() => setSoldType("set")}
-              >
-                <Boxes />
-                Sets
-              </Button>
-              <Button
-                variant={soldType === "minifig" ? "secondary" : "ghost"}
-                size="sm"
-                type="button"
-                className="rounded-none shadow-none"
-                aria-pressed={soldType === "minifig"}
-                onClick={() => setSoldType("minifig")}
-              >
-                <Users />
-                Minifigures
-              </Button>
+          {(view === "complete" || view === "minifig" || view === "incomplete") && shelfLots.length > 0 ? (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-fit shrink-0 px-2.5"
+                    disabled={matchAll.isPending || fillPrices.isPending}
+                  >
+                    {matchAll.isPending || fillPrices.isPending ? (
+                      <RefreshCw className="animate-spin" />
+                    ) : (
+                      <ChevronDown />
+                    )}
+                    Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {view !== "incomplete" ? (
+                    <DropdownMenuItem
+                      disabled={matchAll.isPending || !(ebayCanPublish(settings) || bricklinkCanSync(settings))}
+                      onSelect={() => matchAll.mutate()}
+                    >
+                      <RefreshCw className="size-4" />
+                      Match listings
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    disabled={fillPrices.isPending || !(bricklinkCanSync(settings) || ebayIsConnected(settings)) || visible.length === 0}
+                    onSelect={() => fillPrices.mutate(visible.map((lot) => lot.id))}
+                  >
+                    <Tag className="size-4" />
+                    Fill BrickLink pricing
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : null}
           <div className="relative sm:hidden">
@@ -757,7 +815,7 @@ function SetListRow({
       onClick={onOpen}
       className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
     >
-      <span className="size-14 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+      <span className="size-[60px] shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
         {set.imageUrl ? (
           <img src={set.imageUrl} alt="" className="size-full object-contain p-1" />
         ) : (
