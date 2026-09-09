@@ -10,11 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiEbayNotificationsRouteImport } from './routes/api/ebay/notifications'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiEbayNotificationsRoute = ApiEbayNotificationsRouteImport.update({
@@ -25,27 +37,35 @@ const ApiEbayNotificationsRoute = ApiEbayNotificationsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/ebay/notifications': typeof ApiEbayNotificationsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/ebay/notifications': typeof ApiEbayNotificationsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/ebay/notifications': typeof ApiEbayNotificationsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/ebay/notifications'
+  fullPaths: '/' | '/login' | '/api/auth/$' | '/api/ebay/notifications'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/ebay/notifications'
-  id: '__root__' | '/' | '/api/ebay/notifications'
+  to: '/' | '/login' | '/api/auth/$' | '/api/ebay/notifications'
+  id: '__root__' | '/' | '/login' | '/api/auth/$' | '/api/ebay/notifications'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiEbayNotificationsRoute: typeof ApiEbayNotificationsRoute
 }
 
@@ -56,6 +76,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ebay/notifications': {
@@ -70,6 +104,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiEbayNotificationsRoute: ApiEbayNotificationsRoute,
 }
 export const routeTree = rootRouteImport

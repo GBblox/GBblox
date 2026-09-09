@@ -14,6 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { UserButton } from "@/lib/auth/gates";
 import { addLocationOption, removeLocationOption } from "@/lib/locations";
 import { getEbayNotifyConfig, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
 import { testRoyalMailKey } from "@/lib/server/postage";
@@ -205,6 +206,9 @@ export function SettingsSheet() {
         </SheetHeader>
 
         <div className="space-y-6 px-5 pb-8">
+          <div className="rounded-md bg-surface-2 px-3 py-2">
+            <UserButton />
+          </div>
           {page ? (
             <Button type="button" variant="outline" size="sm" onClick={() => setPage(null)}>
               <ChevronLeft />

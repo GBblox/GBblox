@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { ownerFn } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { createRoyalMailLabel, fetchRoyalMailLabel, testRoyalMail } from "@/lib/royal-mail";
@@ -32,7 +32,7 @@ async function savePostage(channel: string, id: string, postage: PostageLabel): 
   `;
 }
 
-export const testRoyalMailKey = createServerFn({ method: "POST" })
+export const testRoyalMailKey = ownerFn("POST")
   .validator(z.object({ royalMailApiKey: z.string() }))
   .handler(async ({ data }) => {
     const key = data.royalMailApiKey.trim();
@@ -40,7 +40,7 @@ export const testRoyalMailKey = createServerFn({ method: "POST" })
     return testRoyalMail(key);
   });
 
-export const createPostage = createServerFn({ method: "POST" })
+export const createPostage = ownerFn("POST")
   .validator(
     credsSchema.extend({
       channel: z.enum(["ebay", "bricklink"]),
@@ -83,7 +83,7 @@ export const createPostage = createServerFn({ method: "POST" })
     return { ...detail, postage };
   });
 
-export const reprintPostage = createServerFn({ method: "POST" })
+export const reprintPostage = ownerFn("POST")
   .validator(
     credsSchema.extend({
       channel: z.enum(["ebay", "bricklink"]),

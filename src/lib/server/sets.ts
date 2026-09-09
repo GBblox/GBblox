@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { ownerFn } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { credsFromSettings, enrichCatalogHit, searchCatalog } from "@/lib/catalog";
 import {
@@ -281,7 +281,7 @@ async function assignSku(
   return nextAutoSku(setNum, itemType, exceptId);
 }
 
-export const listSets = createServerFn({ method: "GET" }).handler(async () => {
+export const listSets = ownerFn("GET").handler(async () => {
   const sql = await getSql();
   try {
     await ensureExtraPhotosColumn();
@@ -296,7 +296,7 @@ export const listSets = createServerFn({ method: "GET" }).handler(async () => {
   return (rows ?? []).map((row) => mapSet(row));
 });
 
-export const lookupSet = createServerFn({ method: "POST" })
+export const lookupSet = ownerFn("POST")
   .validator(
     z.object({
       query: z.string().min(1).max(80),
@@ -313,7 +313,7 @@ export const lookupSet = createServerFn({ method: "POST" })
     });
   });
 
-export const nextSku = createServerFn({ method: "POST" })
+export const nextSku = ownerFn("POST")
   .validator(
     z.object({
       setNum: z.string().min(1).max(40),
@@ -324,7 +324,7 @@ export const nextSku = createServerFn({ method: "POST" })
     return nextAutoSku(data.setNum, data.itemType ?? "set");
   });
 
-export const fetchCatalogDetails = createServerFn({ method: "POST" })
+export const fetchCatalogDetails = ownerFn("POST")
   .validator(
     z.object({
       setNum: z.string().min(1).max(40),
@@ -365,7 +365,7 @@ export const fetchCatalogDetails = createServerFn({ method: "POST" })
     return enrichCatalogHit({ ...hit, itemType: data.itemType }, creds);
   });
 
-export const addSet = createServerFn({ method: "POST" })
+export const addSet = ownerFn("POST")
   .validator(
     z.object({
       setNum: z.string().min(1).max(40),
@@ -413,7 +413,7 @@ export const addSet = createServerFn({ method: "POST" })
     return mapSet(rows[0]);
   });
 
-export const importCsv = createServerFn({ method: "POST" })
+export const importCsv = ownerFn("POST")
   .validator(z.object({ csv: z.string().min(8).max(400_000) }))
   .handler(async ({ data }) => {
     const { rows, issues } = parseInventoryCsv(data.csv);
@@ -522,7 +522,7 @@ export const importCsv = createServerFn({ method: "POST" })
     return { added, updated, skipped: issues.length, issues: issues.slice(0, 40) };
   });
 
-export const seedDemoCatalog = createServerFn({ method: "POST" })
+export const seedDemoCatalog = ownerFn("POST")
   .validator(z.object({}).optional())
   .handler(async () => {
   const sql = await getSql();
@@ -589,7 +589,7 @@ export const seedDemoCatalog = createServerFn({ method: "POST" })
   return { added, total: DEMO_LOTS.length, locations: [...new Set(locations)] };
 });
 
-export const updateSet = createServerFn({ method: "POST" })
+export const updateSet = ownerFn("POST")
   .validator(
     z.object({
       id: z.number().int(),
@@ -667,7 +667,7 @@ export const updateSet = createServerFn({ method: "POST" })
     return mapSet(rows[0]);
   });
 
-export const refreshCatalog = createServerFn({ method: "POST" })
+export const refreshCatalog = ownerFn("POST")
   .validator(z.object({ id: z.number().int(), settings: settingsSchema.optional() }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -708,7 +708,7 @@ export const refreshCatalog = createServerFn({ method: "POST" })
     return mapSet(rows[0]);
   });
 
-export const deleteSet = createServerFn({ method: "POST" })
+export const deleteSet = ownerFn("POST")
   .validator(z.object({ id: z.number().int() }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -716,7 +716,7 @@ export const deleteSet = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-export const refreshPrice = createServerFn({ method: "POST" })
+export const refreshPrice = ownerFn("POST")
   .validator(
     z.object({
       id: z.number().int(),
@@ -772,7 +772,7 @@ export const refreshPrice = createServerFn({ method: "POST" })
     return { set: mapSet(rows[0]), price };
   });
 
-export const previewListing = createServerFn({ method: "GET" })
+export const previewListing = ownerFn("GET")
   .validator(
     z.object({
       id: z.number().int(),
@@ -790,7 +790,7 @@ export const previewListing = createServerFn({ method: "GET" })
     return { set, draft: composeListing(set, data.marketplace as MarketplaceId) };
   });
 
-export const exportListingCsv = createServerFn({ method: "GET" })
+export const exportListingCsv = ownerFn("GET")
   .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -801,7 +801,7 @@ export const exportListingCsv = createServerFn({ method: "GET" })
     return { csv: fileExchangeRow(set, data.settings, draft), filename: `${draft.sku}.csv` };
   });
 
-export const listOnEbay = createServerFn({ method: "POST" })
+export const listOnEbay = ownerFn("POST")
   .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -826,7 +826,7 @@ export const listOnEbay = createServerFn({ method: "POST" })
     return { set: mapSet(rows[0]), url: published.url, itemId: published.itemId };
   });
 
-export const listOnBricklink = createServerFn({ method: "POST" })
+export const listOnBricklink = ownerFn("POST")
   .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
   .handler(async ({ data }) => {
     const creds = bricklinkCredsFrom(data.settings);
@@ -851,7 +851,7 @@ export const listOnBricklink = createServerFn({ method: "POST" })
     return { set: mapSet(rows[0]), url: lot.url, inventoryId: lot.inventoryId };
   });
 
-export const syncListings = createServerFn({ method: "POST" })
+export const syncListings = ownerFn("POST")
   .validator(z.object({ id: z.number().int().optional(), settings: settingsSchema }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -957,7 +957,7 @@ export const syncListings = createServerFn({ method: "POST" })
     };
   });
 
-export const testEbayToken = createServerFn({ method: "POST" })
+export const testEbayToken = ownerFn("POST")
   .validator(z.object({ token: z.string().min(8), marketplace: z.string().optional() }))
   .handler(async ({ data }) => {
     const siteId =
@@ -987,21 +987,21 @@ export const testEbayToken = createServerFn({ method: "POST" })
     return { ok: true as const, userId: user ?? "ok" };
   });
 
-export const getEbayNotifyConfig = createServerFn({ method: "GET" }).handler(async () => {
+export const getEbayNotifyConfig = ownerFn("GET").handler(async () => {
   return loadEbayNotifyConfig();
 });
 
-export const updateEbayNotifyConfig = createServerFn({ method: "POST" })
+export const updateEbayNotifyConfig = ownerFn("POST")
   .validator(z.object({ token: z.string().min(32).max(80), endpoint: z.string().max(300).optional().default("") }))
   .handler(async ({ data }) => saveEbayNotifyConfig(data.token, data.endpoint ?? ""));
 
-export const mintEbayNotifyToken = createServerFn({ method: "POST" }).handler(async () => {
+export const mintEbayNotifyToken = ownerFn("POST").handler(async () => {
   const current = await loadEbayNotifyConfig();
   const token = generateNotifyToken();
   return saveEbayNotifyConfig(token, current.endpoint || "https://gbblox.co.uk/api/ebay/notifications");
 });
 
-export const testBricklinkToken = createServerFn({ method: "POST" })
+export const testBricklinkToken = ownerFn("POST")
   .validator(
     z.object({
       blConsumerKey: z.string(),

@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+import { ownerFn } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { listBricklinkOrders, bricklinkCredsFrom, fetchBricklinkOrder } from "@/lib/bricklink-store";
 import { getSql } from "@/lib/db";
@@ -153,7 +153,7 @@ async function saveSale(detail: SaleOrderDetail): Promise<void> {
   `;
 }
 
-export const listSales = createServerFn({ method: "POST" })
+export const listSales = ownerFn("POST")
   .validator(credsSchema)
   .handler(async ({ data }): Promise<SalesResult> => {
     const warnings: string[] = [];
@@ -203,7 +203,7 @@ export const listSales = createServerFn({ method: "POST" })
     return { orders: sortSales(merged), warnings };
   });
 
-export const getSaleOrder = createServerFn({ method: "POST" })
+export const getSaleOrder = ownerFn("POST")
   .validator(
     credsSchema.extend({
       channel: z.enum(["ebay", "bricklink"]),
