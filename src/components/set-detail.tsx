@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Copy,
+  Boxes,
+  ChevronDown,
   Download,
   ExternalLink,
   Loader2,
@@ -21,10 +22,10 @@ import { BatchNumberSelect } from "@/components/batch-select";
 import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -50,6 +51,7 @@ import {
   channelBadgeVariant,
   channelLabel,
   conditionCode,
+  conditionLabel,
   formatMoney,
   formatWeight,
   itemNumberDisplay,
@@ -60,6 +62,8 @@ import {
   statusLabel,
 } from "@/lib/format";
 import { CONDITIONS, type Condition, type Inclusion, type LegoSet, type Status } from "@/lib/types";
+import { ebayItemSpecifics, type ListingDraft } from "@/lib/ebay";
+import { completenessLabel, composeBricklinkListing } from "@/lib/bricklink-listing";
 
 function downloadText(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -99,6 +103,8 @@ export function SetDetail({
   const [printOpen, setPrintOpen] = useState(false);
   const [printField, setPrintField] = useState<"sku" | "location">("sku");
   const [editing, setEditing] = useState(false);
+  const [ebayOpen, setEbayOpen] = useState(false);
+  const [bricklinkOpen, setBricklinkOpen] = useState(false);
 
   const hydrate = (row: LegoSet) => {
     setCondition(row.condition);
@@ -123,6 +129,8 @@ export function SetDetail({
     if (!set) return;
     hydrate(set);
     setEditing(false);
+    setEbayOpen(false);
+    setBricklinkOpen(false);
   }, [set]);
 
   const fieldClass = editing
@@ -223,7 +231,10 @@ export function SetDetail({
   });
 
   const publish = useMutation({
-    mutationFn: () => listOnEbay({ data: { id: set!.id, settings: credentialsOf(settings) } }),
+    mutationFn: () =>
+      listOnEbay({
+        data: { id: set!.id, settings: { ...credentialsOf(settings), marketplace: "EBAY_GB" } },
+      }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["sets"] });
       toast.success("Listed on eBay");
@@ -283,25 +294,35 @@ export function SetDetail({
     <Sheet
       open={Boolean(set)}
       onOpenChange={(o) => {
-        if (!o && printOpen) return;
+        if (!o && (printOpen || ebayOpen || bricklinkOpen)) return;
         if (!o) onClose();
       }}
     >
       <SheetContent
         className="overflow-y-auto"
         onPointerDownOutside={(e) => {
-          if (printOpen) e.preventDefault();
+          if (printOpen || ebayOpen || bricklinkOpen) e.preventDefault();
         }}
         onInteractOutside={(e) => {
-          if (printOpen) e.preventDefault();
+          if (printOpen || ebayOpen || bricklinkOpen) e.preventDefault();
         }}
         onFocusOutside={(e) => {
-          if (printOpen) e.preventDefault();
+          if (printOpen || ebayOpen || bricklinkOpen) e.preventDefault();
         }}
         onEscapeKeyDown={(e) => {
           if (printOpen) {
             e.preventDefault();
             setPrintOpen(false);
+            return;
+          }
+          if (ebayOpen) {
+            e.preventDefault();
+            setEbayOpen(false);
+            return;
+          }
+          if (bricklinkOpen) {
+            e.preventDefault();
+            setBricklinkOpen(false);
           }
         }}
       >
@@ -367,15 +388,38 @@ export function SetDetail({
                   </Button>
                 </div>
               ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  type="button"
-                  onClick={() => setEditing(true)}
-                >
-                  <Pencil />
-                  Edit
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="w-fit shrink-0 px-2.5">
+                      <ChevronDown />
+                      Actions
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => setEditing(true)}>
+                      <Pencil className="size-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setBricklinkOpen(false);
+                        setEbayOpen(true);
+                      }}
+                    >
+                      <Store className="size-4" />
+                      eBay information
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setEbayOpen(false);
+                        setBricklinkOpen(true);
+                      }}
+                    >
+                      <Boxes className="size-4" />
+                      BrickLink information
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
 
@@ -777,83 +821,6 @@ export function SetDetail({
                 </Button>
               ) : null}
 
-              <Separator />
-
-              <section className="space-y-3">
-                <h3 className="text-sm font-semibold">eBay listing</h3>
-                {draft && (
-                  <div className={`space-y-2 rounded-md ${blockClass} p-3`}>
-                    <p className="text-xs text-muted">Title</p>
-                    <p className="text-sm leading-snug">{draft.title}</p>
-                    <p className="text-xs text-subtle">{draft.title.length}/80</p>
-                  </div>
-                )}
-                <div className="grid gap-2">
-                  {canPublish ? (
-                    <Button disabled={publish.isPending} onClick={() => publish.mutate()}>
-                      {publish.isPending ? <Loader2 className="animate-spin" /> : <Store />}
-                      List on eBay
-                    </Button>
-                  ) : (
-                    <Button asChild>
-                      <a href={draft?.prelistUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink />
-                        Open eBay listing form
-                      </a>
-                    </Button>
-                  )}
-                  {canBl ? (
-                    <Button variant="secondary" disabled={publishBl.isPending} onClick={() => publishBl.mutate()}>
-                      {publishBl.isPending ? <Loader2 className="animate-spin" /> : <Store />}
-                      List on BrickLink
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-subtle">
-                      BrickLink listing writes this SKU into the lot Remarks field so Match SKU can find it.
-                    </p>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      variant="outline"
-                      disabled={!draft}
-                      onClick={async () => {
-                        if (!draft) return;
-                        await navigator.clipboard.writeText(
-                          `${draft.title}\n\n${draft.descriptionHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}`,
-                        );
-                        toast.success("Listing copied");
-                      }}
-                    >
-                      <Copy />
-                      Copy
-                    </Button>
-                    <Button variant="outline" disabled={csv.isPending} onClick={() => csv.mutate()}>
-                      {csv.isPending ? <Loader2 className="animate-spin" /> : <Download />}
-                      CSV
-                    </Button>
-                  </div>
-                </div>
-                {set.ebayListingUrl && (
-                  <a
-                    href={set.ebayListingUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-link underline-offset-2 hover:underline"
-                  >
-                    View live listing
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                )}
-                {!canPublish && (
-                  <p className="text-xs leading-relaxed text-subtle">
-                    Without a user token, GBblox opens eBay with this set pre-searched and
-                    hands you a File Exchange CSV. Add a token in Settings to publish from here.
-                  </p>
-                )}
-              </section>
-
-              <Separator />
-
               <Button
                 variant="ghost"
                 className="w-full text-danger hover:text-danger"
@@ -872,6 +839,23 @@ export function SetDetail({
         )}
       </SheetContent>
     </Sheet>
+    <EbayInfoSheet
+      open={ebayOpen}
+      onClose={() => setEbayOpen(false)}
+      lot={set}
+      draft={draft}
+      publishPending={publish.isPending}
+      csvPending={csv.isPending}
+      onPublish={() => publish.mutate()}
+      onCsv={() => csv.mutate()}
+    />
+    <BricklinkInfoSheet
+      open={bricklinkOpen}
+      onClose={() => setBricklinkOpen(false)}
+      lot={set}
+      listPending={publishBl.isPending}
+      onList={() => publishBl.mutate()}
+    />
     <PrintLabelDialog
       lot={
         set
@@ -889,5 +873,272 @@ export function SetDetail({
       onOpenChange={setPrintOpen}
     />
     </>
+  );
+}
+
+function EbayInfoSheet({
+  open,
+  onClose,
+  lot,
+  draft,
+  publishPending,
+  csvPending,
+  onPublish,
+  onCsv,
+}: {
+  open: boolean;
+  onClose: () => void;
+  lot: LegoSet | null;
+  draft: ListingDraft | undefined;
+  publishPending: boolean;
+  csvPending: boolean;
+  onPublish: () => void;
+  onCsv: () => void;
+}) {
+  const specifics = lot ? ebayItemSpecifics(lot) : [];
+  const description = draft
+    ? draft.descriptionHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    : "";
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent className="z-[60] overflow-y-auto">
+        {lot ? (
+          <>
+            <SheetHeader>
+              <div className="flex items-start gap-3 pr-6">
+                <img
+                  src={lot.imageUrl ?? draft?.pictureUrl ?? ""}
+                  alt=""
+                  className="size-16 rounded-sm bg-white object-contain outline outline-1 -outline-offset-1 outline-fg/10"
+                />
+                <div className="min-w-0">
+                  <p className="font-mono text-xs font-medium text-link">
+                    {itemNumberDisplay(lot.setNum, lot.itemType)}
+                  </p>
+                  <p className="font-mono text-[11px] text-subtle">{draft?.sku ?? lot.sku}</p>
+                  <SheetTitle>eBay information</SheetTitle>
+                  <SheetDescription>
+                    Prefilled listing fields GBblox will send to eBay.
+                  </SheetDescription>
+                </div>
+              </div>
+            </SheetHeader>
+            <div className="space-y-5 px-5 pb-10">
+              {draft ? (
+                <div className="space-y-4 rounded-md bg-surface-2 p-4">
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Title</p>
+                    <p className="mt-1 text-sm leading-snug font-semibold">{draft.title}</p>
+                    <p className="mt-0.5 text-xs text-subtle">{draft.title.length}/80</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">SKU</p>
+                      <p className="mt-1 font-mono text-sm">{draft.sku}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Quantity</p>
+                      <p className="mt-1 text-sm tabular-nums">{draft.quantity}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Price</p>
+                      <p className="mt-1 font-display text-lg font-extrabold tabular-nums">
+                        {draft.price != null ? formatMoney(draft.price, lot.currency) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Condition</p>
+                      <p className="mt-1 text-sm">{conditionLabel(lot.condition)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Category ID</p>
+                      <p className="mt-1 font-mono text-sm">{draft.categoryId}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Condition ID</p>
+                      <p className="mt-1 font-mono text-sm">{draft.conditionId}</p>
+                    </div>
+                  </div>
+                  {specifics.length > 0 ? (
+                    <div>
+                      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Item specifics</p>
+                      <dl className="mt-2 space-y-1.5">
+                        {specifics.map(([name, value]) => (
+                          <div key={name} className="flex justify-between gap-3 text-sm">
+                            <dt className="text-muted">{name}</dt>
+                            <dd className="text-right font-semibold">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Description</p>
+                    <p className="mt-1 text-sm leading-relaxed text-fg">{description}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted">Loading listing fields…</p>
+              )}
+              <div className="grid gap-2">
+                {lot.ebayListed ? (
+                  <Button
+                    type="button"
+                    disabled
+                    className="bg-success text-surface hover:bg-success hover:text-surface disabled:opacity-100"
+                  >
+                    Already listed on eBay
+                  </Button>
+                ) : (
+                  <Button disabled={publishPending} onClick={onPublish}>
+                    {publishPending ? <Loader2 className="animate-spin" /> : <Store />}
+                    List on eBay
+                  </Button>
+                )}
+                <Button variant="outline" disabled={csvPending} onClick={onCsv}>
+                  {csvPending ? <Loader2 className="animate-spin" /> : <Download />}
+                  CSV
+                </Button>
+                {lot.ebayListingUrl ? (
+                  <a
+                    href={lot.ebayListingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-link underline-offset-2 hover:underline"
+                  >
+                    View live listing
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function BricklinkInfoSheet({
+  open,
+  onClose,
+  lot,
+  listPending,
+  onList,
+}: {
+  open: boolean;
+  onClose: () => void;
+  lot: LegoSet | null;
+  listPending: boolean;
+  onList: () => void;
+}) {
+  const draft = lot ? composeBricklinkListing(lot) : null;
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent className="z-[60] overflow-y-auto">
+        {lot && draft ? (
+          <>
+            <SheetHeader>
+              <div className="flex items-start gap-3 pr-6">
+                <img
+                  src={lot.imageUrl ?? ""}
+                  alt=""
+                  className="size-16 rounded-sm bg-white object-contain outline outline-1 -outline-offset-1 outline-fg/10"
+                />
+                <div className="min-w-0">
+                  <p className="font-mono text-xs font-medium text-link">
+                    {itemNumberDisplay(lot.setNum, lot.itemType)}
+                  </p>
+                  <p className="font-mono text-[11px] text-subtle">{draft.remarks}</p>
+                  <SheetTitle>BrickLink information</SheetTitle>
+                  <SheetDescription>
+                    Prefilled inventory fields GBblox will send to BrickLink.
+                  </SheetDescription>
+                </div>
+              </div>
+            </SheetHeader>
+            <div className="space-y-5 px-5 pb-10">
+              <div className="space-y-4 rounded-md bg-surface-2 p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Item no</p>
+                    <p className="mt-1 font-mono text-sm">{draft.itemNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Type</p>
+                    <p className="mt-1 text-sm">{draft.itemType === "MINIFIG" ? "Minifigure" : "Set"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Condition</p>
+                    <p className="mt-1 text-sm">{draft.condition === "N" ? "New" : "Used"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Completeness</p>
+                    <p className="mt-1 text-sm">{completenessLabel(draft.completeness)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Quantity</p>
+                    <p className="mt-1 text-sm tabular-nums">{draft.quantity}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">Unit price</p>
+                    <p className="mt-1 font-display text-lg font-extrabold tabular-nums">
+                      {draft.unitPrice != null ? formatMoney(draft.unitPrice, lot.currency) : "—"}
+                    </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold tracking-wide text-muted uppercase">Remarks (SKU)</p>
+                  <p className="mt-1 font-mono text-sm">{draft.remarks}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold tracking-wide text-muted uppercase">Description</p>
+                  <p className="mt-1 text-sm leading-relaxed text-fg">{draft.description}</p>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                {lot.blListed ? (
+                  <Button
+                    type="button"
+                    disabled
+                    className="bg-success text-surface hover:bg-success hover:text-surface disabled:opacity-100"
+                  >
+                    Already listed on BrickLink
+                  </Button>
+                ) : (
+                  <Button disabled={listPending} onClick={onList}>
+                    {listPending ? <Loader2 className="animate-spin" /> : <Boxes />}
+                    List on BrickLink
+                  </Button>
+                )}
+                {lot.blListingUrl ? (
+                  <a
+                    href={lot.blListingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-link underline-offset-2 hover:underline"
+                  >
+                    View live listing
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                ) : (
+                  <a
+                    href={draft.catalogUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-link underline-offset-2 hover:underline"
+                  >
+                    View on BrickLink
+                    <ExternalLink className="size-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   );
 }

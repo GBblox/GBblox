@@ -7,11 +7,13 @@ import {
 } from "./bricklink-price";
 import { conditionCode, decodeEntities } from "./format";
 import { flattenOrderItems, mapBlItems } from "./bricklink-order-items";
+import { bricklinkListingDescription, completenessOf } from "./bricklink-listing";
 import { skuMatchesRemarks } from "./sku";
 import type { ItemType, LegoSet, SaleLine, SaleOrder, SaleOrderDetail } from "./types";
 
 export type { BricklinkPriceBand };
 export { bricklinkItemCandidates, bricklinkItemType, parseBricklinkPriceGuide };
+export { bricklinkListingDescription, completenessOf };
 
 export type BricklinkCreds = {
   consumerKey: string;
@@ -145,21 +147,6 @@ export function matchBricklinkLot(lots: BricklinkLot[], sku: string): BricklinkL
 export async function findBricklinkBySku(creds: BricklinkCreds, sku: string): Promise<BricklinkLot | null> {
   const lots = await listBricklinkInventories(creds);
   return matchBricklinkLot(lots, sku);
-}
-
-function completenessOf(set: LegoSet): "S" | "C" | "B" {
-  if (set.condition === "new_sealed") return "S";
-  if (set.condition === "used_incomplete" || set.condition === "used_parts") return "B";
-  return "C";
-}
-
-export function bricklinkListingDescription(set: LegoSet): string {
-  const instructions =
-    set.comesWithInstructions === "yes" ? "Comes with instructions" : "Does not come with instructions";
-  const box = set.comesWithBox === "yes" ? "Comes with box" : "Does not come with box";
-  const notes = set.notes.trim();
-  const body = notes ? `${instructions} - ${box}. ${notes}` : `${instructions} - ${box}`;
-  return body.slice(0, 2000);
 }
 
 export async function createBricklinkLot(creds: BricklinkCreds, set: LegoSet): Promise<BricklinkLot> {

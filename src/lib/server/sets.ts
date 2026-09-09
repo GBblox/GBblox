@@ -875,8 +875,9 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
-    const draft = composeListing(set, data.settings.marketplace);
-    const published = await publishToEbay(set, data.settings, draft);
+    const settings = { ...data.settings, marketplace: "EBAY_GB" as const };
+    const draft = composeListing(set, settings.marketplace);
+    const published = await publishToEbay(set, settings, draft);
     const rows = await sql<Row>`
       update lego_sets
       set status = 'listed',

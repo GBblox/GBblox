@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { formatMoney, itemNumberDisplay, itemTypeLabel } from "@/lib/format";
 import { listOnBricklink, listOnEbay } from "@/lib/server/sets";
 import { bricklinkCanSync, credentialsOf, ebayCanPublish, useSettings } from "@/lib/settings";
-import { shelfBucket, type LegoSet } from "@/lib/types";
+import { type LegoSet } from "@/lib/types";
 
-function eligible(lot: LegoSet) {
-  const bucket = shelfBucket(lot);
-  return bucket === "complete" || bucket === "minifig";
+function listable(lot: LegoSet) {
+  if (lot.status === "sold") return false;
+  if (lot.status === "incomplete") return false;
+  if (lot.condition === "used_incomplete" || lot.condition === "used_parts") return false;
+  return lot.itemType === "set" || lot.itemType === "minifig";
 }
 
 export function ListingsPanel({
@@ -24,18 +26,26 @@ export function ListingsPanel({
 }) {
   const settings = useSettings();
   const qc = useQueryClient();
-  const [hideBl, setHideBl] = useState(false);
-  const [hideEbay, setHideEbay] = useState(false);
+  const [channel, setChannel] = useState<"ebay" | "bricklink">("ebay");
   const [picked, setPicked] = useState<Set<number>>(new Set());
 
   const rows = useMemo(() => {
     return lots.filter((lot) => {
-      if (!eligible(lot)) return false;
-      if (hideBl && lot.blListed) return false;
-      if (hideEbay && lot.ebayListed) return false;
+      if (!listable(lot)) return false;
+      if (channel === "ebay" && lot.ebayListed) return false;
+      if (channel === "bricklink" && lot.blListed) return false;
       return true;
     });
-  }, [lots, hideBl, hideEbay]);
+  }, [lots, channel]);
+
+  const ebayCount = useMemo(
+    () => lots.filter((lot) => listable(lot) && !lot.ebayListed).length,
+    [lots],
+  );
+  const blCount = useMemo(
+    () => lots.filter((lot) => listable(lot) && !lot.blListed).length,
+    [lots],
+  );
 
   const selectedLots = rows.filter((lot) => picked.has(lot.id));
   const allOn = rows.length > 0 && rows.every((lot) => picked.has(lot.id));
@@ -52,6 +62,18 @@ export function ListingsPanel({
   function toggleAll() {
     if (allOn) setPicked(new Set());
     else setPicked(new Set(rows.map((lot) => lot.id)));
+  }
+
+  function toggleEbay() {
+    if (channel === "ebay") return;
+    setChannel("ebay");
+    setPicked(new Set());
+  }
+
+  function toggleBricklink() {
+    if (channel === "bricklink") return;
+    setChannel("bricklink");
+    setPicked(new Set());
   }
 
   const bulk = useMutation({
@@ -95,36 +117,52 @@ export function ListingsPanel({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant={hideEbay ? "secondary" : "outline"} onClick={() => setHideEbay((v) => !v)}>
-          Not listed on eBay
-        </Button>
-        <Button type="button" size="sm" variant={hideBl ? "secondary" : "outline"} onClick={() => setHideBl((v) => !v)}>
-          Not listed on BrickLink
-        </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full overflow-hidden rounded-md shadow-[var(--shadow-border)]">
         <Button
           type="button"
           size="sm"
+          variant={channel === "ebay" ? "secondary" : "ghost"}
+          className="min-w-0 flex-1 rounded-none px-2.5 shadow-none"
+          aria-pressed={channel === "ebay"}
+          onClick={toggleEbay}
+        >
+          Not listed on eBay ({ebayCount})
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={channel === "bricklink" ? "secondary" : "ghost"}
+          className="min-w-0 flex-1 rounded-none px-2.5 shadow-none"
+          aria-pressed={channel === "bricklink"}
+          onClick={toggleBricklink}
+        >
+          Not listed on BrickLink ({blCount})
+        </Button>
+      </div>
+      {channel === "ebay" ? (
+        <Button
+          type="button"
+          size="sm"
+          className="w-full"
           disabled={!selectedLots.length || bulk.isPending || !ebayCanPublish(settings)}
           onClick={() => bulk.mutate("ebay")}
         >
           {bulk.isPending && bulk.variables === "ebay" ? <Loader2 className="animate-spin" /> : <Store />}
           List {selectedLots.length || ""} on eBay
         </Button>
+      ) : (
         <Button
           type="button"
           size="sm"
           variant="secondary"
+          className="w-full"
           disabled={!selectedLots.length || bulk.isPending || !bricklinkCanSync(settings)}
           onClick={() => bulk.mutate("bricklink")}
         >
           {bulk.isPending && bulk.variables === "bricklink" ? <Loader2 className="animate-spin" /> : <Store />}
           List {selectedLots.length || ""} on BrickLink
         </Button>
-      </div>
+      )}
 
       <ul className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
         <li className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-2 text-xs text-muted">
