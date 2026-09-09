@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 import { getSql } from "./db";
-import { env } from "./env.server";
 
 export const NOTIFY_TOKEN_MIN = 32;
 export const NOTIFY_TOKEN_MAX = 80;
@@ -14,14 +13,19 @@ export function generateNotifyToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+function processEnv(key: string): string {
+  const v = typeof process === "undefined" ? "" : process.env[key];
+  return v?.trim() || "";
+}
+
 export function ebayNotificationTokenFromEnv(): string {
-  return env("EBAY_NOTIFICATION_VERIFICATION_TOKEN")?.trim() || "";
+  return processEnv("EBAY_NOTIFICATION_VERIFICATION_TOKEN");
 }
 
 export const PUBLIC_EBAY_NOTIFY_ENDPOINT = "https://gbblox.co.uk/api/ebay/notifications";
 
 export function ebayNotificationEndpointFromEnv(): string {
-  return env("EBAY_NOTIFICATION_ENDPOINT")?.trim().replace(/\/+$/, "") || PUBLIC_EBAY_NOTIFY_ENDPOINT;
+  return processEnv("EBAY_NOTIFICATION_ENDPOINT").replace(/\/+$/, "") || PUBLIC_EBAY_NOTIFY_ENDPOINT;
 }
 
 export function ebayChallengeResponse(challengeCode: string, token: string, endpoint: string): string {
