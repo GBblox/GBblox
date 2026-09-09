@@ -1,4 +1,6 @@
-import { ownerFn } from "@/lib/owner-middleware";
+import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
+import { ownerMiddleware } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { assertBatchValid, normalizePostcode } from "@/lib/batch-rules";
@@ -90,7 +92,7 @@ export function formatBatchNumber(n: number): string {
   return `BAT-${String(n).padStart(3, "0")}`;
 }
 
-export const nextBatchNumber = ownerFn("GET").handler(async () => {
+export const nextBatchNumber = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware]).handler(async () => {
   const sql = await getSql();
   await ensureBatchesTable();
   const rows = await sql<{ batch_number: string }>`select batch_number from purchase_batches`;
@@ -104,7 +106,7 @@ export const nextBatchNumber = ownerFn("GET").handler(async () => {
   return formatBatchNumber(max + 1);
 });
 
-export const listBatches = ownerFn("GET").handler(async () => {
+export const listBatches = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware]).handler(async () => {
   const sql = await getSql();
   await ensureBatchesTable();
   const rows = await sql<BatchRow>`
@@ -114,7 +116,7 @@ export const listBatches = ownerFn("GET").handler(async () => {
   return (rows ?? []).map(mapBatch);
 });
 
-export const createBatch = ownerFn("POST")
+export const createBatch = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(
     z.object({
       purchasedOn: z.string().min(8).max(10),
@@ -187,7 +189,7 @@ const batchFields = {
   price: z.number().finite().min(0),
 };
 
-export const updateBatch = ownerFn("POST")
+export const updateBatch = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(z.object({ id: z.number().int(), ...batchFields }))
   .handler(async ({ data }) => {
     const sql = await getSql();
@@ -226,7 +228,7 @@ export const updateBatch = ownerFn("POST")
     return mapBatch(rows[0]);
   });
 
-export const deleteBatch = ownerFn("POST")
+export const deleteBatch = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(z.object({ id: z.number().int(), batchNumber: z.string().min(1) }))
   .handler(async ({ data }) => {
     const sql = await getSql();

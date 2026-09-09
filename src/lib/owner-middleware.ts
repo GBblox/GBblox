@@ -1,5 +1,4 @@
-import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import { authMiddleware } from "@/lib/auth/middleware";
+import { createMiddleware } from "@tanstack/react-start";
 import { isOwnerEmail } from "@/lib/owner";
 
 export class ForbiddenError extends Error {
@@ -34,6 +33,3 @@ export const ownerMiddleware = createMiddleware({ type: "function" })
     });
   });
 
-export function ownerFn(method: "GET" | "POST") {
-  return createServerFn({ method }).middleware([authMiddleware, ownerMiddleware]);
-}

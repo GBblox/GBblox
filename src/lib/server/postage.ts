@@ -1,4 +1,6 @@
-import { ownerFn } from "@/lib/owner-middleware";
+import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
+import { ownerMiddleware } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { createRoyalMailLabel, fetchRoyalMailLabel, testRoyalMail } from "@/lib/royal-mail";
@@ -32,7 +34,7 @@ async function savePostage(channel: string, id: string, postage: PostageLabel): 
   `;
 }
 
-export const testRoyalMailKey = ownerFn("POST")
+export const testRoyalMailKey = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(z.object({ royalMailApiKey: z.string() }))
   .handler(async ({ data }) => {
     const key = data.royalMailApiKey.trim();
@@ -40,7 +42,7 @@ export const testRoyalMailKey = ownerFn("POST")
     return testRoyalMail(key);
   });
 
-export const createPostage = ownerFn("POST")
+export const createPostage = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(
     credsSchema.extend({
       channel: z.enum(["ebay", "bricklink"]),
@@ -83,7 +85,7 @@ export const createPostage = ownerFn("POST")
     return { ...detail, postage };
   });
 
-export const reprintPostage = ownerFn("POST")
+export const reprintPostage = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(
     credsSchema.extend({
       channel: z.enum(["ebay", "bricklink"]),
