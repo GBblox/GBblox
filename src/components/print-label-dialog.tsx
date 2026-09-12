@@ -106,10 +106,10 @@ export function PrintLabelDialog({
                     <p className="mt-1 line-clamp-2 text-lg font-extrabold leading-tight">{lot.name}</p>
                   )}
                   <div
-                    className="mt-1 min-h-0 flex-1 [&_svg]:block [&_svg]:h-full [&_svg]:w-full"
+                    className="mt-1 min-h-0 w-full flex-1 [&_svg]:block [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-none"
                     dangerouslySetInnerHTML={{ __html: barcode }}
                   />
-                  <p className="mt-1 text-center font-mono text-sm font-bold tracking-wide">{payload?.caption ?? lot.sku}</p>
+                  <p className="mt-1 text-center font-mono text-lg font-bold tracking-wide">{payload?.caption ?? lot.sku}</p>
                 </div>
               </div>
 

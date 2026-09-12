@@ -38,6 +38,48 @@ export function code128Widths(text: string): number[] {
   return code128Values(text).flatMap((code) => [...PATTERNS[code]].map(Number));
 }
 
+export function drawCode128Stretched(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const payload = text.trim();
+  if (!payload || width <= 0 || height <= 0) return;
+  const widths = code128Widths(payload);
+  const inner = widths.reduce((a, b) => a + b, 0);
+  const quiet = 10;
+  const total = inner + quiet * 2;
+  const unit = width / total;
+  ctx.fillStyle = "#111111";
+  let px = x + quiet * unit;
+  widths.forEach((w, i) => {
+    const bw = w * unit;
+    if (i % 2 === 0) ctx.fillRect(px, y, Math.max(1, bw), height);
+    px += bw;
+  });
+}
+
+export function code128DataUrl(text: string, barHeight = 160, barWidth?: number): string {
+  const payload = text.trim();
+  if (!payload || typeof document === "undefined") return "";
+  const quiet = 10;
+  const widths = code128Widths(payload);
+  const inner = widths.reduce((a, b) => a + b, 0);
+  const scale = 8;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, barWidth ?? (inner + quiet * 2) * scale);
+  canvas.height = barHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawCode128Stretched(ctx, payload, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
 export function code128Svg(text: string): string {
   const payload = text.trim();
   if (!payload) {

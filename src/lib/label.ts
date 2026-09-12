@@ -1,4 +1,4 @@
-import { code128Svg } from "./barcode";
+import { code128Svg, drawCode128Stretched } from "./barcode";
 import { itemNumberDisplay, itemTypeLabel } from "./format";
 import type { ItemType } from "./types";
 
@@ -33,6 +33,83 @@ export function labelBarcodePayload(lot: LabelLot): {
   return { code: sku, caption: sku, tag: kind, secondary: "" };
 }
 
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = word;
+    if (lines.length === maxLines - 1) break;
+  }
+  if (lines.length < maxLines && current) lines.push(current);
+  if (lines.length === maxLines) {
+    let last = lines[maxLines - 1] ?? "";
+    while (last && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+    if (words.join(" ").length > last.length) lines[maxLines - 1] = `${last.trim()}…`;
+  }
+  return lines;
+}
+
+export function renderLabelPng(lot: LabelLot, width = 1464, height = 686): string {
+  if (typeof document === "undefined") return "";
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#111111";
+  ctx.textBaseline = "top";
+
+  const payload = labelBarcodePayload(lot);
+  const padX = Math.round(width * 0.035);
+  const padY = Math.round(height * 0.07);
+  const innerW = width - padX * 2;
+  const metaH = Math.round(height * 0.11);
+  const skuH = Math.round(height * 0.18);
+  const nameH = lot.barcodeField === "location" ? 0 : Math.round(height * 0.2);
+  const gap = Math.round(height * 0.035);
+
+  ctx.font = `700 ${metaH}px Arial, Helvetica, sans-serif`;
+  ctx.textAlign = "left";
+  ctx.fillText(payload.tag, padX, padY, innerW * 0.55);
+  if (lot.barcodeField !== "location") {
+    const num = itemNumberDisplay(lot.setNum, lot.itemType);
+    ctx.textAlign = "right";
+    ctx.fillText(num, width - padX, padY, innerW * 0.4);
+  }
+
+  let y = padY + metaH + gap;
+  if (nameH) {
+    const name = lot.name.trim() || lot.setNum;
+    const fontPx = Math.round(height * 0.125);
+    ctx.font = `800 ${fontPx}px Arial, Helvetica, sans-serif`;
+    ctx.textAlign = "left";
+    const lines = wrapLines(ctx, name, innerW, 2);
+    lines.forEach((line, i) => ctx.fillText(line, padX, y + i * fontPx * 1.12, innerW));
+    y += Math.round(fontPx * 1.12 * Math.max(1, lines.length)) + gap;
+  }
+
+  const skuY = height - padY - skuH;
+  const barcodeY = y;
+  const barcodeH = Math.max(24, skuY - gap - barcodeY);
+  drawCode128Stretched(ctx, payload.code, padX, barcodeY, innerW, barcodeH);
+
+  ctx.font = `700 ${skuH}px "IBM Plex Mono", Consolas, ui-monospace, monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(payload.caption, width / 2, skuY + skuH / 2, innerW);
+
+  return canvas.toDataURL("image/png");
+}
+
 function escapeHtml(s: string): string {
   return s
     .replaceAll("&", "\u0026amp;")
@@ -42,6 +119,8 @@ function escapeHtml(s: string): string {
 }
 
 export function labelMarkup(lot: LabelLot): string {
+  const png = renderLabelPng(lot);
+  if (png) return `<div class="page"><img class="sheet" alt="" src="${png}" /></div>`;
   const payload = labelBarcodePayload(lot);
   let barcode = "";
   try {
@@ -49,6 +128,8 @@ export function labelMarkup(lot: LabelLot): string {
   } catch {
     barcode = "";
   }
+  const name = lot.name.trim() || lot.setNum;
+  const num = itemNumberDisplay(lot.setNum, lot.itemType);
   if (lot.barcodeField === "location") {
     return `<article class="label location">
   <header class="meta"><span>${escapeHtml(payload.tag)}</span></header>
@@ -56,8 +137,6 @@ export function labelMarkup(lot: LabelLot): string {
   <p class="sku">${escapeHtml(payload.caption)}</p>
 </article>`;
   }
-  const name = lot.name.trim() || lot.setNum;
-  const num = itemNumberDisplay(lot.setNum, lot.itemType);
   return `<article class="label">
   <header class="meta"><span>${escapeHtml(payload.tag)}</span><span>${escapeHtml(num)}</span></header>
   <p class="name">${escapeHtml(name)}</p>
@@ -75,53 +154,43 @@ export function labelPrintDocument(lot: LabelLot, copies = 1): string {
 <meta charset="utf-8"/>
 <title>GBblox label</title>
 <style>
-  @page { size: auto; margin: 0; }
-  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  html, body { margin: 0; padding: 0; background: #fff; color: #111; width: 100%; height: 100%; }
+  @page { margin: 0; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+  .page {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    break-after: page;
+    page-break-after: always;
+  }
+  .page:last-child { break-after: auto; page-break-after: auto; }
+  img.sheet {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    object-position: center center;
+  }
   .label {
     width: 100%;
     height: 100%;
-    min-height: 100vh;
-    padding: 4%;
+    padding: 1.5mm 2mm;
     display: flex;
     flex-direction: column;
-    page-break-after: always;
-    overflow: hidden;
+    gap: 0.8mm;
     font-family: Arial, Helvetica, sans-serif;
   }
-  .label:last-child { page-break-after: auto; }
-  .meta {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11pt;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #333;
-  }
-  .label.location .meta { justify-content: center; }
-  .name {
-    margin: 2% 0;
-    font-size: 16pt;
-    font-weight: 800;
-    line-height: 1.15;
-    overflow: hidden;
-  }
-  .barcode {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    align-items: stretch;
-  }
+  .meta, .name, .sku { flex: 0 0 auto; }
+  .meta { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; text-transform: uppercase; }
+  .name { margin: 0; font-size: 12pt; font-weight: 800; }
+  .barcode { flex: 1 1 0; min-height: 8mm; }
   .barcode svg { width: 100%; height: 100%; display: block; }
-  .sku {
-    margin: 2% 0 0;
-    text-align: center;
-    font-family: "IBM Plex Mono", "Consolas", ui-monospace, monospace;
-    font-size: 14pt;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
+  .sku { margin: 0; text-align: center; font-size: 14pt; font-weight: 700; font-family: Consolas, monospace; }
 </style>
 </head>
 <body>
@@ -130,25 +199,48 @@ ${sheets}
 </html>`;
 }
 
+function whenPrintable(doc: Document): Promise<void> {
+  const images = Array.from(doc.images);
+  return Promise.all([
+    doc.fonts?.ready ?? Promise.resolve(),
+    ...images.map((img) =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          }),
+    ),
+  ]).then(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 export function printLabelSheets(lot: LabelLot, copies = 1): void {
   const html = labelPrintDocument(lot, copies);
   const iframe = document.createElement("iframe");
   iframe.title = "Print label";
   iframe.setAttribute("aria-hidden", "true");
-  iframe.style.cssText =
-    "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;pointer-events:none";
+  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:744px;height:348px;border:0;";
   const cleanup = () => {
-    iframe.onload = null;
     iframe.remove();
   };
-  iframe.onload = () => {
-    const win = iframe.contentWindow;
-    if (!win) {
-      cleanup();
-      throw new Error("Could not open a print sheet.");
-    }
-    win.addEventListener("afterprint", cleanup);
-    window.setTimeout(cleanup, 120_000);
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument;
+  if (!win || !doc) {
+    iframe.remove();
+    throw new Error("Could not open a print sheet.");
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
+  win.addEventListener("afterprint", cleanup);
+  window.setTimeout(cleanup, 120_000);
+  void whenPrintable(doc).then(() => {
     try {
       win.focus();
       win.print();
@@ -165,7 +257,5 @@ export function printLabelSheets(lot: LabelLot, copies = 1): void {
       popup.print();
       cleanup();
     }
-  };
-  document.body.appendChild(iframe);
-  iframe.srcdoc = html;
+  });
 }

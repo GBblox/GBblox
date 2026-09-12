@@ -262,7 +262,7 @@ export function AddSetDialog({
 
           {hits.length > 0 && (
             <ul className="grid gap-2">
-              {hits.map((hit) => {
+              {(picked ? hits.filter((hit) => hit.setNum === picked.setNum && hit.itemType === picked.itemType) : hits).map((hit) => {
                 const active = picked?.setNum === hit.setNum && picked?.itemType === hit.itemType;
                 return (
                   <li key={`${hit.itemType}-${hit.setNum}`}>
@@ -270,24 +270,28 @@ export function AddSetDialog({
                       type="button"
                       onClick={() => setPicked(hit)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-md p-2 text-left shadow-[var(--shadow-border)] transition-colors",
+                        "flex w-full min-w-0 items-start gap-3 rounded-md p-2 text-left shadow-[var(--shadow-border)] transition-colors",
                         active ? "bg-primary/20 ring-1 ring-primary" : "bg-surface hover:bg-surface-2",
                       )}
                     >
-                      <img
-                        src={hit.imageUrl ?? ""}
-                        alt=""
-                        className="size-14 rounded-sm object-contain bg-white outline outline-1 -outline-offset-1 outline-fg/10"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
+                      <span className="size-14 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+                        {hit.imageUrl ? (
+                          <img
+                            src={hit.imageUrl}
+                            alt=""
+                            className="size-full max-h-full max-w-full object-contain"
+                          />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 flex-1 pt-0.5">
+                        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                           <span className="font-mono text-xs font-medium text-link">{hit.setNum}</span>
                           <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted uppercase">
                             {hit.itemType === "minifig" ? "Minifig" : "Set"}
                           </span>
                         </span>
-                        <span className="block truncate text-sm font-semibold">{hit.name}</span>
-                        <span className="mt-0.5 block text-xs text-muted">
+                        <span className="mt-0.5 block line-clamp-2 break-words text-sm font-semibold leading-snug">{hit.name}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted">
                           {[hit.year, hit.category, hit.subCategory, hit.numParts ? `${hit.numParts.toLocaleString()} pcs` : null]
                             .filter(Boolean)
                             .join(" · ")}

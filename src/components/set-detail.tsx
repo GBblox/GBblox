@@ -330,11 +330,11 @@ export function SetDetail({
           <>
             <SheetHeader>
               <div className="flex items-start gap-3 pr-6">
-                <img
-                  src={set.imageUrl ?? ""}
-                  alt=""
-                  className="size-16 rounded-sm object-contain bg-white outline outline-1 -outline-offset-1 outline-fg/10"
-                />
+                <span className="size-16 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+                  {set.imageUrl ? (
+                    <img src={set.imageUrl} alt="" className="size-full object-contain p-0.5" />
+                  ) : null}
+                </span>
                 <div className="min-w-0">
                   <p className="font-mono text-xs font-medium text-link">{itemNumberDisplay(set.setNum, set.itemType)}</p>
                   <p className="font-mono text-[11px] text-subtle">{set.sku}</p>
@@ -907,11 +907,11 @@ function EbayInfoSheet({
           <>
             <SheetHeader>
               <div className="flex items-start gap-3 pr-6">
-                <img
-                  src={lot.imageUrl ?? draft?.pictureUrl ?? ""}
-                  alt=""
-                  className="size-16 rounded-sm bg-white object-contain outline outline-1 -outline-offset-1 outline-fg/10"
-                />
+                <span className="size-16 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+                  {lot.imageUrl || draft?.pictureUrl ? (
+                    <img src={lot.imageUrl ?? draft?.pictureUrl ?? ""} alt="" className="size-full object-contain p-0.5" />
+                  ) : null}
+                </span>
                 <div className="min-w-0">
                   <p className="font-mono text-xs font-medium text-link">
                     {itemNumberDisplay(lot.setNum, lot.itemType)}
@@ -1042,11 +1042,11 @@ function BricklinkInfoSheet({
           <>
             <SheetHeader>
               <div className="flex items-start gap-3 pr-6">
-                <img
-                  src={lot.imageUrl ?? ""}
-                  alt=""
-                  className="size-16 rounded-sm bg-white object-contain outline outline-1 -outline-offset-1 outline-fg/10"
-                />
+                <span className="size-16 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+                  {lot.imageUrl ? (
+                    <img src={lot.imageUrl} alt="" className="size-full object-contain p-0.5" />
+                  ) : null}
+                </span>
                 <div className="min-w-0">
                   <p className="font-mono text-xs font-medium text-link">
                     {itemNumberDisplay(lot.setNum, lot.itemType)}

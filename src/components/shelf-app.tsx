@@ -791,7 +791,7 @@ function SetListRow({
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
+      className="flex w-full min-w-0 items-start gap-3 px-3 py-2.5 text-left hover:bg-surface-2"
     >
       <span className="size-[60px] shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
         {set.imageUrl ? (
@@ -802,8 +802,8 @@ function SetListRow({
           </span>
         )}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-semibold">{set.name}</span>
+      <span className="min-w-0 flex-1 pt-0.5">
+        <span className="block line-clamp-2 break-words font-semibold leading-snug">{set.name}</span>
         <span className="mt-0.5 block font-mono text-[11px] text-subtle">
           {[itemNumberDisplay(set.setNum, set.itemType), set.sku].filter(Boolean).join(" · ")}
         </span>
