@@ -12,7 +12,6 @@ import { ProductEnquiry } from "@/components/product-enquiry";
 import { SalesPanel } from "@/components/sales-panel";
 import { SetDetail } from "@/components/set-detail";
 import { SettingsSheet } from "@/components/settings-sheet";
-import { UserButton } from "@/lib/auth/gates";
 import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -281,9 +280,6 @@ export function ShelfApp() {
               </div>
             ) : null}
             <SettingsSheet />
-            <div className="hidden min-w-0 sm:block">
-              <UserButton />
-            </div>
             <Button
               size="icon"
               aria-label="Sales"
