@@ -5,7 +5,6 @@ import {
   labelSizeOf,
   languageFileExt,
   sizeIdForPrinter,
-  hostPageSize,
   type BaudRate,
   type ConnectionMode,
   type Dpi,
@@ -24,7 +23,7 @@ export type ThermalJob = {
 };
 
 export type ThermalPayload = {
-  language: Exclude<PrintLanguage, "system" | "brother">;
+  language: Exclude<PrintLanguage, "system">;
   text: string;
   filename: string;
   bytes?: Uint8Array;
@@ -498,20 +497,8 @@ export async function printThermal(lot: LabelLot, job: ThermalJob): Promise<"pri
   const copies = copiesOf(job.copies);
   const sizeId = sizeIdForPrinter(job.sizeId, job.language);
   const fitted = { ...job, sizeId, copies };
-  if (job.language === "brother") {
-    const usbOk = fitted.connection !== "download" && usbAvailable();
-    if (usbOk) {
-      try {
-        return await printThermal(lot, { ...fitted, language: "escp" });
-      } catch {
-        // Fall through to the system print dialog when USB is blocked on a live site.
-      }
-    }
-    printLabelSheets(lot, copies, hostPageSize(sizeId));
-    return "printed";
-  }
   if (job.language === "system") {
-    printLabelSheets(lot, copies, hostPageSize(sizeId));
+    printLabelSheets(lot, copies);
     return "printed";
   }
   const payload = buildThermalLabel(lot, fitted);

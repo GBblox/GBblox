@@ -2,9 +2,6 @@ import { code128Svg } from "./barcode";
 import { itemNumberDisplay, itemTypeLabel } from "./format";
 import type { ItemType } from "./types";
 
-export const LABEL_WIDTH_IN = 62 / 25.4;
-export const LABEL_HEIGHT_IN = 50 / 25.4;
-
 export type LabelBarcodeField = "sku" | "location";
 
 export type LabelLot = {
@@ -34,17 +31,6 @@ export function labelBarcodePayload(lot: LabelLot): {
     };
   }
   return { code: sku, caption: sku, tag: kind, secondary: "" };
-}
-
-export type LabelPageSize = {
-  widthMm: number;
-  heightMm: number;
-};
-
-export const LABEL_PAGE_62_CONT: LabelPageSize = { widthMm: 62, heightMm: 50 };
-
-function trimMm(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function escapeHtml(s: string): string {
@@ -80,31 +66,23 @@ export function labelMarkup(lot: LabelLot): string {
 </article>`;
 }
 
-export function labelPrintDocument(
-  lot: LabelLot,
-  copies = 1,
-  size: LabelPageSize = LABEL_PAGE_62_CONT,
-): string {
+export function labelPrintDocument(lot: LabelLot, copies = 1): string {
   const n = Math.min(99, Math.max(1, Math.floor(copies) || 1));
   const sheets = Array.from({ length: n }, () => labelMarkup(lot)).join("\n");
-  const wMm = Math.round(size.widthMm * 10) / 10;
-  const hMm = Math.round(size.heightMm * 10) / 10;
-  const namePt = hMm >= 150 ? 22 : hMm >= 75 ? 18 : hMm >= 50 ? 16 : 12;
-  const skuPt = hMm >= 50 ? 11 : 9;
-  const metaPt = hMm >= 50 ? 9 : 8;
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>GBblox ${trimMm(wMm)}mm x ${trimMm(hMm)}mm</title>
+<title>GBblox label</title>
 <style>
-  @page { size: ${trimMm(wMm)}mm ${trimMm(hMm)}mm; margin: 0; }
+  @page { size: auto; margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  html, body { margin: 0; padding: 0; background: #fff; color: #111; width: ${trimMm(wMm)}mm; height: ${trimMm(hMm)}mm; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #111; width: 100%; height: 100%; }
   .label {
-    width: ${trimMm(wMm)}mm;
-    height: ${trimMm(hMm)}mm;
-    padding: 2mm 3mm 1.5mm;
+    width: 100%;
+    height: 100%;
+    min-height: 100vh;
+    padding: 4%;
     display: flex;
     flex-direction: column;
     page-break-after: always;
@@ -115,7 +93,7 @@ export function labelPrintDocument(
   .meta {
     display: flex;
     justify-content: space-between;
-    font-size: ${metaPt}pt;
+    font-size: 11pt;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -123,36 +101,26 @@ export function labelPrintDocument(
   }
   .label.location .meta { justify-content: center; }
   .name {
-    margin: 1.5mm 0 1mm;
-    font-size: ${namePt}pt;
+    margin: 2% 0;
+    font-size: 16pt;
     font-weight: 800;
     line-height: 1.15;
-    max-height: ${hMm >= 75 ? "20mm" : hMm >= 50 ? "12mm" : "7mm"};
     overflow: hidden;
   }
   .barcode {
     flex: 1;
-    min-height: ${hMm >= 50 ? "18mm" : "8mm"};
+    min-height: 0;
     display: flex;
     align-items: stretch;
   }
   .barcode svg { width: 100%; height: 100%; display: block; }
   .sku {
-    margin: 0.06in 0 0;
+    margin: 2% 0 0;
     text-align: center;
     font-family: "IBM Plex Mono", "Consolas", ui-monospace, monospace;
-    font-size: ${skuPt}pt;
+    font-size: 14pt;
     font-weight: 700;
     letter-spacing: 0.04em;
-  }
-  .secondary {
-    margin: 0.02in 0 0;
-    text-align: center;
-    font-family: "IBM Plex Mono", "Consolas", ui-monospace, monospace;
-    font-size: ${Math.max(7, skuPt - 2)}pt;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: #333;
   }
 </style>
 </head>
@@ -162,12 +130,8 @@ ${sheets}
 </html>`;
 }
 
-export function printLabelSheets(
-  lot: LabelLot,
-  copies = 1,
-  size: LabelPageSize = LABEL_PAGE_62_CONT,
-): void {
-  const html = labelPrintDocument(lot, copies, size);
+export function printLabelSheets(lot: LabelLot, copies = 1): void {
+  const html = labelPrintDocument(lot, copies);
   const iframe = document.createElement("iframe");
   iframe.title = "Print label";
   iframe.setAttribute("aria-hidden", "true");
@@ -192,7 +156,7 @@ export function printLabelSheets(
       const popup = window.open("", "_blank", "noopener,width=480,height=360");
       if (!popup) {
         cleanup();
-        throw new Error("Could not open the print dialog. Allow pop-ups for this site and try System print.");
+        throw new Error("Could not open the print dialog. Allow pop-ups for this site.");
       }
       popup.document.open();
       popup.document.write(html);

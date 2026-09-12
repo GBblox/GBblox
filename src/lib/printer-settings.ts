@@ -24,7 +24,7 @@ function size<I extends string>(
   } as const;
 }
 
-/** QL-1110NWB sizes. Tape width must match the roll in the printer. */
+/** Thermal command-file sizes. System print ignores these and uses the OS dialog. */
 export const LABEL_SIZES = [
   size("dk-22205", 62, 50, 62, true, "62 mm continuous · 50 mm cut"),
   size("dk-22205-80", 62, 80, 62, true, "62 mm continuous · 80 mm cut"),
@@ -49,12 +49,11 @@ export const LABEL_SIZE_GROUPS: { heading: string; ids: readonly LabelSizeId[] }
 ];
 
 export const PRINT_LANGUAGES = [
-  { id: "escp", label: "Brother ESC/P", hint: "QL-1110NWB · Software Developer ESC/P commands" },
-  { id: "brother", label: "Brother print service", hint: "QL-1110NWB · Brother driver / Print Service" },
-  { id: "system", label: "System print", hint: "Browser print dialog" },
+  { id: "system", label: "System print", hint: "Browser print dialog · paper size is chosen there" },
   { id: "zpl", label: "ZPL", hint: "Zebra, Rollo, many 4″ desktops" },
   { id: "tspl", label: "TSPL", hint: "TSC, Munbyn, some Rollo clones" },
   { id: "epl", label: "EPL", hint: "Older Eltron / Zebra" },
+  { id: "escp", label: "ESC/P", hint: "Command file download" },
 ] as const;
 
 export type PrintLanguage = (typeof PRINT_LANGUAGES)[number]["id"];
@@ -84,13 +83,13 @@ export type PrinterSettings = {
 };
 
 export const DEFAULT_PRINTER: PrinterSettings = {
-  language: "escp",
+  language: "system",
   sizeId: "dk-22205",
   dpi: 300,
   darkness: 15,
   connection: "usb",
   baudRate: 9600,
-  lastPrinterName: "Brother QL-1110NWB",
+  lastPrinterName: "",
 };
 
 const LEGACY_SIZE: Record<string, LabelSizeId> = {
@@ -108,14 +107,7 @@ export function sizeIdForPrinter(id: LabelSizeId | string, language: PrintLangua
 }
 
 export function sizeMatchesInstalledTape(id: LabelSizeId | string): boolean {
-  return labelSizeOf(id).tapeWidthMm === 62;
-}
-
-/** Named QL-1110NWB driver papers for 62 mm tape. 62×50 is not in the driver and falls back to 103×164. */
-export function hostPageSize(id: LabelSizeId | string): { widthMm: number; heightMm: number } {
-  const size = labelSizeOf(sizeIdForPrinter(id, "brother"));
-  if (size.heightMm >= 80) return { widthMm: 62, heightMm: 100 };
-  return { widthMm: 62, heightMm: 29 };
+  return true;
 }
 
 type PrinterState = PrinterSettings & {
@@ -131,22 +123,8 @@ export const usePrinterStore = create<PrinterState>()(
     {
       name: "brickshelf-printer",
       skipHydration: true,
-      version: 7,
-      migrate: (persisted) => {
-        const p = (persisted ?? {}) as Partial<PrinterSettings> & { sizeId?: string };
-        const language =
-          p.language === "zpl" || p.language === "tspl" || p.language === "epl" || p.language === "system"
-            ? p.language
-            : "escp";
-        return {
-          ...DEFAULT_PRINTER,
-          ...p,
-          sizeId: DEFAULT_PRINTER.sizeId,
-          language,
-          dpi: language === "escp" ? 300 : p.dpi === 203 || p.dpi === 300 ? p.dpi : 300,
-          lastPrinterName: p.lastPrinterName?.trim() || DEFAULT_PRINTER.lastPrinterName,
-        };
-      },
+      version: 8,
+      migrate: () => ({ ...DEFAULT_PRINTER }),
       partialize: (s) => ({
         language: s.language,
         sizeId: s.sizeId,
@@ -188,7 +166,7 @@ export function labelSizeOf(id: LabelSizeId | string = DEFAULT_PRINTER.sizeId): 
 }
 
 export function isHostPrint(id: PrintLanguage | string): boolean {
-  return id === "brother" || id === "system";
+  return id === "system";
 }
 
 export function languageLabel(id: PrintLanguage): string {

@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, KeyRound, Loader2, MapPin, Plus, Printer, Settings, Store, Truck, Usb, X } from "lucide-react";
+import { Check, ChevronLeft, KeyRound, Loader2, MapPin, Plus, Settings, Store, Truck, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -19,39 +19,12 @@ import { addLocationOption, removeLocationOption } from "@/lib/locations";
 import { getEbayNotifyConfig, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
 import { testRoyalMailKey } from "@/lib/server/postage";
 import { bricklinkCanSync, royalMailCanPost, useSettings } from "@/lib/settings";
-import {
-  BAUD_RATES,
-  CONNECTION_MODES,
-  DPI_OPTIONS,
-  LABEL_SIZE_GROUPS,
-  LABEL_SIZES,
-  PRINT_LANGUAGES,
-  clampDarkness,
-  isHostPrint,
-  labelSizeOf,
-  type BaudRate,
-  type ConnectionMode,
-  type Dpi,
-  type LabelSizeId,
-  type PrintLanguage,
-  usePrinter,
-} from "@/lib/printer-settings";
-import {
-  SAMPLE_LABEL,
-  pairSerialPort,
-  pairUsbPrinter,
-  printErrorMessage,
-  printThermal,
-  serialAvailable,
-  usbAvailable,
-} from "@/lib/thermal";
 import type { Condition, Inclusion } from "@/lib/types";
 
-type SettingsPage = "locations" | "printer" | "marketplace" | "rebrickable" | "ebay" | "bricklink" | "royalmail";
+type SettingsPage = "locations" | "marketplace" | "rebrickable" | "ebay" | "bricklink" | "royalmail";
 
 const PAGES: { id: SettingsPage; title: string; blurb: string; icon: typeof MapPin }[] = [
   { id: "locations", title: "Locations", blurb: "Bins and shelves", icon: MapPin },
-  { id: "printer", title: "Label printer", blurb: "QL-1110NWB and rolls", icon: Printer },
   { id: "marketplace", title: "Marketplace", blurb: "eBay site and postage", icon: Store },
   { id: "rebrickable", title: "Rebrickable", blurb: "Catalog API key", icon: KeyRound },
   { id: "ebay", title: "eBay API", blurb: "App ID and user token", icon: Store },
@@ -63,10 +36,8 @@ export function SettingsSheet() {
   const settings = useSettings();
   const setSettings = settings.setSettings;
   const qc = useQueryClient();
-  const printer = usePrinter();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<SettingsPage | null>(null);
-  const [pairing, setPairing] = useState<"usb" | "serial" | "test" | null>(null);
   const [locationDraft, setLocationDraft] = useState("");
 
   const test = useMutation({
@@ -119,54 +90,6 @@ export function SettingsSheet() {
     onSuccess: (res) => toast.success(`Click & Drop connected · ${res.release}`),
     onError: (err) => toast.error(err instanceof Error ? err.message : "Royal Mail failed"),
   });
-
-  const pairUsb = async () => {
-    setPairing("usb");
-    try {
-      const name = await pairUsbPrinter();
-      printer.setPrinter({ lastPrinterName: name, connection: "usb" });
-      toast.success(`Paired ${name}`);
-    } catch (err) {
-      toast.error(printErrorMessage(err));
-    } finally {
-      setPairing(null);
-    }
-  };
-
-  const pairSerial = async () => {
-    setPairing("serial");
-    try {
-      const name = await pairSerialPort();
-      printer.setPrinter({ lastPrinterName: name, connection: "serial" });
-      toast.success("Serial port paired");
-    } catch (err) {
-      toast.error(printErrorMessage(err));
-    } finally {
-      setPairing(null);
-    }
-  };
-
-  const testPrint = async () => {
-    setPairing("test");
-    try {
-      const result = await printThermal(SAMPLE_LABEL, {
-        language: printer.language,
-        sizeId: printer.sizeId,
-        dpi: printer.dpi,
-        darkness: clampDarkness(printer.darkness),
-        copies: 1,
-        connection: printer.connection,
-        baudRate: printer.baudRate,
-      });
-      if (result === "sent") toast.success("Test label sent");
-      else if (result === "downloaded") toast.success("Downloaded test label — pair a printer to send USB directly");
-      else toast.success("System print opened");
-    } catch (err) {
-      toast.error(printErrorMessage(err));
-    } finally {
-      setPairing(null);
-    }
-  };
 
   const addLocation = () => {
     const result = addLocationOption(settings.locations ?? [], locationDraft);
@@ -289,168 +212,6 @@ export function SettingsSheet() {
                 Add
               </Button>
             </form>
-          </section>
-          ) : page === "printer" ? (
-
-          <section className="space-y-3">
-            <p className="text-sm text-muted">
-              QL-1110NWB with a 62 mm continuous roll. Default size is 62 mm continuous · 50 mm cut. 103 × 164 mm is a different roll and will be rejected.
-            </p>
-            <div className="space-y-2">
-              <Label>Language</Label>
-              <Select
-                value={printer.language}
-                onValueChange={(v) => {
-                  const language = v as PrintLanguage;
-                  printer.setPrinter(language === "escp" ? { language, dpi: 300 } : { language });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRINT_LANGUAGES.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.label} · {l.hint}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Label size</Label>
-                <Select
-                  value={printer.sizeId}
-                  onValueChange={(v) => printer.setPrinter({ sizeId: v as LabelSizeId })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LABEL_SIZE_GROUPS.map((group) => (
-                      <SelectGroup key={group.heading}>
-                        <SelectLabel>{group.heading}</SelectLabel>
-                        {group.ids.map((id) => {
-                          const s = LABEL_SIZES.find((x) => x.id === id);
-                          if (!s) return null;
-                          return (
-                            <SelectItem key={id} value={id}>
-                              {s.label}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>DPI</Label>
-                <Select
-                  value={String(printer.language === "escp" ? 300 : printer.dpi)}
-                  onValueChange={(v) => printer.setPrinter({ dpi: Number(v) as Dpi })}
-                  disabled={isHostPrint(printer.language) || printer.language === "escp"}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DPI_OPTIONS.map((d) => (
-                      <SelectItem key={d} value={String(d)}>
-                        {d} dpi
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Send via</Label>
-                <Select
-                  value={printer.connection}
-                  onValueChange={(v) => printer.setPrinter({ connection: v as ConnectionMode })}
-                  disabled={isHostPrint(printer.language)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CONNECTION_MODES.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="darkness">Darkness 0–30</Label>
-                <Input
-                  id="darkness"
-                  inputMode="numeric"
-                  value={String(printer.darkness)}
-                  onChange={(e) => printer.setPrinter({ darkness: clampDarkness(Number(e.target.value) || 0) })}
-                  disabled={isHostPrint(printer.language)}
-                />
-              </div>
-              {printer.connection === "serial" && !isHostPrint(printer.language) && (
-                <div className="space-y-2">
-                  <Label>Baud</Label>
-                  <Select
-                    value={String(printer.baudRate)}
-                    onValueChange={(v) => printer.setPrinter({ baudRate: Number(v) as BaudRate })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BAUD_RATES.map((b) => (
-                        <SelectItem key={b} value={String(b)}>
-                          {b}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-            {labelSizeOf(printer.sizeId).tapeWidthMm !== 62 ? (
-              <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
-                Selected size is for {labelSizeOf(printer.sizeId).tapeWidthMm} mm tape. The printer will reject this while a 62 mm continuous roll is installed.
-              </p>
-            ) : null}
-            {printer.lastPrinterName ? (
-              <p className="text-xs text-muted">Last printer: {printer.lastPrinterName}</p>
-            ) : null}
-            <div className="flex flex-col gap-2">
-              <Button
-                variant="secondary"
-                className="w-full"
-                disabled={!usbAvailable() || pairing !== null}
-                onClick={() => void pairUsb()}
-              >
-                {pairing === "usb" ? <Loader2 className="animate-spin" /> : <Usb />}
-                Pair USB printer
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={!serialAvailable() || pairing !== null}
-                onClick={() => void pairSerial()}
-              >
-                {pairing === "serial" ? <Loader2 className="animate-spin" /> : <Usb />}
-                Pair serial port
-              </Button>
-              <Button variant="outline" className="w-full" disabled={pairing !== null} onClick={() => void testPrint()}>
-                {pairing === "test" ? <Loader2 className="animate-spin" /> : <Printer />}
-                Test print
-              </Button>
-            </div>
-            {!usbAvailable() && !serialAvailable() && (
-              <p className="text-xs leading-relaxed text-muted">
-                This browser cannot open USB or serial printers. Print labels will download a command file, or use system print.
-              </p>
-            )}
           </section>
           ) : page === "marketplace" ? (
 
