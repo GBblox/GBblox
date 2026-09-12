@@ -147,6 +147,7 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
       <OrderPage
         detail={detail}
         catalogSkus={catalogSkus}
+        lots={lots}
         onBack={() => setDetail(null)}
         onRefresh={() => {
           loadDetail.mutate({ order: detail, refresh: true });
@@ -159,7 +160,7 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-wrap items-center gap-3">
         <nav className="-mx-1 flex overflow-x-auto px-1" aria-label="Sales channels">
           {CHANNELS.map((c) => (
             <button
@@ -175,10 +176,10 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
             </button>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
-          <p className="text-xs text-muted">
-            {totals.count} order{totals.count === 1 ? "" : "s"} · {formatMoney(totals.sum || null, totals.currency)}
-          </p>
+        <p className="text-xs text-muted">
+          {totals.count} order{totals.count === 1 ? "" : "s"} · {formatMoney(totals.sum || null, totals.currency)}
+        </p>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" disabled={query.isFetching} onClick={() => query.refetch()}>
             {query.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}
             Refresh
@@ -244,7 +245,10 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
                   </label>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <ChannelMark channel={order.channel === "ebay" ? "ebay" : "bricklink"} />
+                      <ChannelMark
+                        channel={order.channel === "ebay" ? "ebay" : "bricklink"}
+                        height={order.channel === "bricklink" ? 14 : 16}
+                      />
                       <Badge variant={/cancel/i.test(order.status) ? "off" : "sale"}>
                         {saleStatusLabel(order.status)}
                       </Badge>
@@ -284,6 +288,7 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
 function OrderPage({
   detail,
   catalogSkus,
+  lots,
   onBack,
   onRefresh,
   onPostage,
@@ -291,6 +296,7 @@ function OrderPage({
 }: {
   detail: SaleOrderDetail;
   catalogSkus: Set<string>;
+  lots: LegoSet[];
   onBack: () => void;
   onRefresh: () => void;
   onPostage: (row: SaleOrderDetail) => void;
@@ -313,7 +319,10 @@ function OrderPage({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <ChannelMark channel={detail.channel === "ebay" ? "ebay" : "bricklink"} />
+              <ChannelMark
+                channel={detail.channel === "ebay" ? "ebay" : "bricklink"}
+                height={detail.channel === "bricklink" ? 14 : 16}
+              />
               <Badge variant="sale">{saleStatusLabel(detail.status)}</Badge>
               <Badge variant="listed">In app</Badge>
             </div>
@@ -355,19 +364,22 @@ function OrderPage({
               {detail.items.map((line, i) => {
                 const inCatalog = Boolean(line.sku && catalogSkus.has(line.sku.toUpperCase()));
                 const meta = [line.itemKind, line.itemNo, line.condition, line.color, line.sku].filter(Boolean);
+                const lot = findLotForLine(lots, line.sku, line.itemNo);
+                const imageUrl =
+                  detail.channel === "ebay"
+                    ? lot?.imageUrl || null
+                    : line.imageUrl || lot?.imageUrl || null;
                 return (
                   <li
                     key={`${line.sku ?? line.itemNo ?? line.title}-${i}`}
                     className="flex items-start justify-between gap-3 border-b border-border px-3 py-2 last:border-b-0"
                   >
                     <div className="flex min-w-0 items-start gap-3">
-                      {line.imageUrl ? (
-                        <img
-                          src={line.imageUrl}
-                          alt=""
-                          className="size-12 shrink-0 rounded-sm bg-white object-contain"
-                        />
-                      ) : null}
+                      <span className="size-14 shrink-0 overflow-hidden rounded-sm bg-white outline outline-1 -outline-offset-1 outline-fg/10">
+                        {imageUrl ? (
+                          <img src={imageUrl} alt="" className="size-full object-contain p-1" />
+                        ) : null}
+                      </span>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold">
                           {line.qty}× {line.title}
@@ -466,7 +478,8 @@ function PickList({
           sku: item.sku || item.itemNo || "",
           qty: item.qty || 1,
           location: lot?.location?.trim() || "No location",
-          imageUrl: lot?.imageUrl || item.imageUrl || null,
+          imageUrl:
+            order.channel === "ebay" ? lot?.imageUrl || null : lot?.imageUrl || item.imageUrl || null,
         });
       });
     });
