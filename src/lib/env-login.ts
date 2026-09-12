@@ -31,6 +31,32 @@ export function envLoginEmail(username: string): string {
   return u.includes("@") ? u : `${u}@gbblox.local`;
 }
 
+function asOrigin(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const url = raw.includes("://") ? new URL(raw) : new URL(`https://${raw}`);
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** Production hosts Better Auth must accept on email/password POSTs. */
+export function deployAuthOrigins(): string[] {
+  const out = new Set<string>();
+  for (const raw of [
+    env("BETTER_AUTH_URL"),
+    env("VERCEL_PROJECT_PRODUCTION_URL"),
+    env("VERCEL_URL"),
+    "gbblox.co.uk",
+    "www.gbblox.co.uk",
+  ]) {
+    const origin = asOrigin(raw);
+    if (origin) out.add(origin);
+  }
+  return [...out];
+}
+
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);

@@ -16,12 +16,20 @@ export const prepareEnvLogin = createServerFn({ method: "POST" })
     const email = envLoginEmail(envLoginUser() || data.username);
     const password = envLoginPassword() ?? data.password;
     const { auth } = await import("@/lib/auth/server");
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const request = getRequest();
+    const headers = request?.headers ?? new Headers({ origin: "https://gbblox.co.uk" });
     try {
       await auth.api.signUpEmail({
         body: { email, password, name: (envLoginUser() || data.username).trim() },
+        headers,
       });
     } catch {
       /* already provisioned */
     }
-    return { email };
+    await auth.api.signInEmail({
+      body: { email, password },
+      headers,
+    });
+    return { email, signedIn: true as const };
   });
