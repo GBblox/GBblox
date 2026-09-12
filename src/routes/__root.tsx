@@ -16,11 +16,11 @@ const queryClient = new QueryClient({
 
 const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
   const { getSessionUser } = await import("@/lib/auth/verify.server");
-  const { envLoginConfigured } = await import("@/lib/env-login");
+  const { passwordLoginRequired } = await import("@/lib/env-login");
   const u = await getSessionUser();
   return {
     user: u ? { id: u.id, email: u.email } : null,
-    passwordLogin: envLoginConfigured(),
+    passwordLogin: passwordLoginRequired(),
   };
 });
 

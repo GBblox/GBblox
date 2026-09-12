@@ -7,7 +7,7 @@ export const Route = createFileRoute("/login")({ component: Login });
 
 function Login() {
   const { passwordLogin } = useRouteContext({ from: "__root__" });
-  if (GOOGLE_LOGIN_PAUSED && !passwordLogin) return <Navigate to="/" />;
+  if (!passwordLogin && GOOGLE_LOGIN_PAUSED) return <Navigate to="/" />;
   return (
     <SignedInOwnerRedirect>
       {authEnabled ? (

@@ -21,12 +21,13 @@ export const ownerMiddleware = createMiddleware({ type: "function" })
   .server(async ({ next, context }) => {
     const { getSessionUser, UnauthorizedError, DEV_USER_ID } = await import("@/lib/auth/verify.server");
     const { isWorkspacePreview } = await import("@/lib/env.server");
-    const { envLoginConfigured } = await import("@/lib/env-login");
+    const { passwordLoginRequired } = await import("@/lib/env-login");
     const user = await getSessionUser(
       "bearerToken" in context ? (context.bearerToken as string | undefined) : undefined,
     );
     if (!user) {
-      if (isWorkspacePreview() || (GOOGLE_LOGIN_PAUSED && !envLoginConfigured())) {
+      if (passwordLoginRequired()) throw new UnauthorizedError();
+      if (isWorkspacePreview() || GOOGLE_LOGIN_PAUSED) {
         return next({ context: { userId: DEV_USER_ID, email: "" } });
       }
       throw new UnauthorizedError();
