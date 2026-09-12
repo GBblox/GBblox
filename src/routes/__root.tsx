@@ -16,12 +16,19 @@ const queryClient = new QueryClient({
 
 const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
   const { getSessionUser } = await import("@/lib/auth/verify.server");
+  const { envLoginConfigured } = await import("@/lib/env-login");
   const u = await getSessionUser();
-  return u ? { id: u.id, email: u.email } : null;
+  return {
+    user: u ? { id: u.id, email: u.email } : null,
+    passwordLogin: envLoginConfigured(),
+  };
 });
 
 export const Route = createRootRoute({
-  beforeLoad: async () => ({ sessionUser: await fetchSessionUser() }),
+  beforeLoad: async () => {
+    const session = await fetchSessionUser();
+    return { sessionUser: session.user, passwordLogin: session.passwordLogin };
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },

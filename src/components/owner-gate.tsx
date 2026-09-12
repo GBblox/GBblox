@@ -1,12 +1,16 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import { Navigate, useRouteContext } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { GbBloxLogo } from "@/components/brick-mark";
 import { Button } from "@/components/ui/button";
-import { GROK_PROVIDERS, signIn, signOut } from "@/lib/auth/client";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { GROK_PROVIDERS, authClient, signIn, signOut } from "@/lib/auth/client";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { GOOGLE_LOGIN_PAUSED, isOwnerEmail, OWNER_EMAIL } from "@/lib/owner";
+import { prepareEnvLogin } from "@/lib/server/login";
 
 const GOOGLE = GROK_PROVIDERS.find((p) => p.idp === "google");
 
@@ -87,11 +91,62 @@ export function AuthScreen({
 }
 
 export function LoginScreen() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setPending(true);
+    try {
+      const prepared = await prepareEnvLogin({ data: { username, password } });
+      const { error } = await authClient.signIn.email({
+        email: prepared.email,
+        password,
+        callbackURL: "/",
+      });
+      if (error) throw new Error(error.message || "Sign-in failed");
+      window.location.href = "/";
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sign-in failed");
+      setPending(false);
+    }
+  }
+
   return (
-    <AuthScreen
-      title="Staff sign-in"
-      body={`GBblox is private. Sign in with Google as ${OWNER_EMAIL}. Other accounts are refused.`}
-    />
+    <main className="grid min-h-screen place-items-center bg-navy px-4 py-10 text-navy-fg">
+      <div className="w-full max-w-md rounded-lg bg-surface p-6 text-fg shadow-[var(--shadow-border)] sm:p-8">
+        <GbBloxLogo className="h-10 sm:h-11" />
+        <h1 className="font-display mt-6 text-2xl font-extrabold tracking-tight text-navy">Staff sign-in</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">GBblox is private. Sign in with your staff username and password.</p>
+        <form className="mt-6 space-y-3" onSubmit={(e) => void onSubmit(e)}>
+          <div className="space-y-1.5">
+            <Label htmlFor="login-user">Username</Label>
+            <Input
+              id="login-user"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="login-pass">Password</Label>
+            <Input
+              id="login-pass"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={pending || !username.trim() || !password}>
+            {pending ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      </div>
+    </main>
   );
 }
 
@@ -112,9 +167,9 @@ export function NotAuthorised({ email }: { email?: string | null }) {
 }
 
 export function OwnerGate({ children }: { children: ReactNode }) {
-  if (GOOGLE_LOGIN_PAUSED || import.meta.env.DEV) return <>{children}</>;
-  const { sessionUser } = useRouteContext({ from: "__root__" });
+  const { sessionUser, passwordLogin } = useRouteContext({ from: "__root__" });
   const { user, isPending } = useCurrentUserState();
+  if (!passwordLogin && (GOOGLE_LOGIN_PAUSED || import.meta.env.DEV)) return <>{children}</>;
   const email = user?.primaryEmail ?? sessionUser?.email ?? null;
   const signedIn = Boolean(user ?? sessionUser);
   if (isPending && !sessionUser) {
@@ -125,7 +180,7 @@ export function OwnerGate({ children }: { children: ReactNode }) {
     );
   }
   if (!signedIn) return <RedirectToSignIn to={SIGN_IN_PATH} />;
-  if (!isOwnerEmail(email)) return <NotAuthorised email={email} />;
+  if (!passwordLogin && !isOwnerEmail(email)) return <NotAuthorised email={email} />;
   return <>{children}</>;
 }
 
@@ -138,7 +193,7 @@ export function SignedInOwnerRedirect({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (user && isOwnerEmail(user.primaryEmail)) return <Navigate to="/" />;
+  if (user && (isOwnerEmail(user.primaryEmail) || GOOGLE_LOGIN_PAUSED)) return <Navigate to="/" />;
   if (user) return <NotAuthorised email={user.primaryEmail} />;
   return <>{children}</>;
 }
