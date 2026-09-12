@@ -3,7 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { ownerMiddleware } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
-import { createRoyalMailLabel, fetchRoyalMailLabel, testRoyalMail } from "@/lib/royal-mail";
+import { createRoyalMailLabel, fetchRoyalMailOrder, testRoyalMail } from "@/lib/royal-mail";
 import type { PostageLabel, SaleOrderDetail } from "@/lib/types";
 import { getSaleOrder } from "./orders";
 
@@ -109,14 +109,14 @@ export const reprintPostage = createServerFn({ method: "POST" }).middleware([aut
       },
     });
     const rmId = detail.postage?.orderIdentifier;
-    if (!rmId) throw new Error("Create a postage label first.");
-    const printed = await fetchRoyalMailLabel(key, rmId);
+    if (!rmId) throw new Error("Send the order to Click & Drop first.");
+    const printed = await fetchRoyalMailOrder(key, rmId);
     const postage: PostageLabel = {
       orderIdentifier: rmId,
       trackingNumber: printed.trackingNumber || detail.postage?.trackingNumber || null,
       serviceCode: detail.postage?.serviceCode || "",
-      labelPdf: printed.labelPdf || detail.postage?.labelPdf || null,
-      createdAt: new Date().toISOString(),
+      labelPdf: null,
+      createdAt: detail.postage?.createdAt || new Date().toISOString(),
     };
     await savePostage(detail.channel, detail.id, postage);
     return { ...detail, postage };

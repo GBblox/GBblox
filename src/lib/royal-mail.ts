@@ -1,11 +1,14 @@
-import type { SaleOrderDetail } from "./types";
+import type { SaleAddress, SaleOrderDetail } from "./types";
 
+/** Pay-as-you-go / OLP (non-OBA) Click & Drop service codes. */
 export const RM_SERVICES = [
-  { code: "TPN24", label: "Tracked 24" },
-  { code: "TPS48", label: "Tracked 48" },
-  { code: "STL1", label: "1st Class" },
-  { code: "STL2", label: "2nd Class" },
-  { code: "SD1", label: "Special Delivery 1pm" },
+  { code: "TOLP24", label: "Tracked 24" },
+  { code: "TOLP48", label: "Tracked 48" },
+  { code: "OLP1", label: "1st Class" },
+  { code: "OLP2", label: "2nd Class" },
+  { code: "OLP1SF", label: "Signed For 1st Class" },
+  { code: "OLP2SF", label: "Signed For 2nd Class" },
+  { code: "SD1OLP", label: "Special Delivery 1pm" },
 ] as const;
 
 export const RM_PACKAGES = [
@@ -14,6 +17,8 @@ export const RM_PACKAGES = [
   { code: "mediumParcel", label: "Medium parcel" },
   { code: "largeParcel", label: "Large parcel" },
 ] as const;
+
+export const CLICK_AND_DROP_APP = "https://business.parcel.royalmail.com/";
 
 export type RmPackageCode = (typeof RM_PACKAGES)[number]["code"];
 export type RmServiceCode = (typeof RM_SERVICES)[number]["code"];
@@ -29,10 +34,11 @@ const BASE = "https://api.parcel.royalmail.com/api/v1";
 
 export function countryCode(country: string | null | undefined): string {
   const c = (country ?? "").trim().toUpperCase();
-  if (!c) return "GB";
-  if (c.length === 2) return c === "UK" ? "GB" : c;
-  if (/united kingdom|great britain|england|scotland|wales|northern ireland/.test(c.toLowerCase())) return "GB";
-  return "GB";
+  if (!c) return "GBR";
+  if (c === "UK" || c === "GB" || c === "GBR") return "GBR";
+  if (/united kingdom|great britain|england|scotland|wales|northern ireland/.test(c.toLowerCase())) return "GBR";
+  if (c.length === 2) return c;
+  return "GBR";
 }
 
 export function serviceLabel(code: string): string {
@@ -43,6 +49,26 @@ function money(n: number | null | undefined): number {
   return n != null && Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
 }
 
+function clip(s: string, max: number): string {
+  return s.trim().slice(0, max);
+}
+
+export function requiredCity(addr: SaleAddress): string {
+  return clip(addr.city, 100) || clip(addr.region, 100) || clip(addr.line2, 100) || "Unknown";
+}
+
+function rmAddress(addr: SaleAddress, name: string) {
+  return {
+    fullName: clip(name || "Customer", 210),
+    addressLine1: clip(addr.line1, 100),
+    addressLine2: clip(addr.line2, 100) || undefined,
+    city: requiredCity(addr),
+    county: clip(addr.region, 100) || undefined,
+    postcode: clip(addr.postal, 20),
+    countryCode: countryCode(addr.country),
+  };
+}
+
 export function buildClickAndDropOrder(
   detail: SaleOrderDetail,
   opts: {
@@ -50,7 +76,6 @@ export function buildClickAndDropOrder(
     packageFormat: string;
     weightGrams: number;
     senderName?: string;
-    includeLabel: boolean;
   },
 ) {
   const addr = detail.address;
@@ -63,21 +88,20 @@ export function buildClickAndDropOrder(
     : [{ title: `Order ${detail.id}`, sku: null, itemNo: null, qty: 1, price: detail.total }];
   const qty = Math.max(1, lines.reduce((n, l) => n + (l.qty || 1), 0));
   const unitWeight = Math.max(1, Math.round(weight / qty));
+  const service = opts.serviceCode.trim().toUpperCase();
+  const ship = rmAddress(addr, addr.name || detail.buyer);
   return {
     items: [
       {
         orderReference: `BS-${detail.channel}-${detail.id}`.slice(0, 40),
         isRecipientABusiness: false,
         recipient: {
-          address: {
-            fullName: addr.name || detail.buyer,
-            addressLine1: addr.line1,
-            addressLine2: addr.line2 || undefined,
-            city: addr.city || addr.region || "Unknown",
-            county: addr.region || undefined,
-            postcode: addr.postal,
-            countryCode: countryCode(addr.country),
-          },
+          address: ship,
+          phoneNumber: detail.phone || undefined,
+          emailAddress: detail.email || undefined,
+        },
+        billing: {
+          address: ship,
           phoneNumber: detail.phone || undefined,
           emailAddress: detail.email || undefined,
         },
@@ -104,14 +128,9 @@ export function buildClickAndDropOrder(
         total: money(detail.total),
         currencyCode: (detail.currency || "GBP").slice(0, 3).toUpperCase(),
         postageDetails: {
-          serviceCode: opts.serviceCode,
-          sendNotificationsTo: "recipient",
+          ...(service ? { serviceCode: service } : {}),
+          sendNotificationsTo: "recipient" as const,
           receiveEmailNotification: Boolean(detail.email),
-        },
-        label: {
-          includeLabelInResponse: opts.includeLabel,
-          includeCN: false,
-          includeReturnsLabel: false,
         },
       },
     ],
@@ -119,10 +138,12 @@ export function buildClickAndDropOrder(
 }
 
 async function rmFetch(path: string, apiKey: string, init: RequestInit = {}): Promise<Response> {
+  const key = apiKey.trim();
+  const authorization = /^bearer\s/i.test(key) ? key : key;
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      Authorization: apiKey,
+      Authorization: authorization,
       Accept: "application/json, application/pdf",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(init.headers ?? {}),
@@ -136,7 +157,7 @@ function errorText(json: unknown, fallback: string): string {
   const o = json as Record<string, unknown>;
   if (typeof o.message === "string" && o.message) return o.message;
   if (typeof o.detail === "string" && o.detail) return o.detail;
-  const failed = o.failedOrders as Array<{ errors?: Array<{ message?: string; errorMessage?: string }> }> | undefined;
+  const failed = o.failedOrders as Array<{ errors?: Array<{ message?: string; errorMessage?: string; errorCode?: string }> }> | undefined;
   const first = failed?.[0]?.errors?.[0]?.message || failed?.[0]?.errors?.[0]?.errorMessage;
   if (first) return first;
   const errors = o.errors as Array<{ message?: string }> | undefined;
@@ -144,11 +165,43 @@ function errorText(json: unknown, fallback: string): string {
   return fallback;
 }
 
-function asBase64Pdf(raw: unknown): string | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  const s = raw.trim();
-  const i = s.indexOf("base64,");
-  return i >= 0 ? s.slice(i + 7) : s.replace(/\s+/g, "");
+type CreatedRow = {
+  orderIdentifier?: number | string;
+  orderReference?: string;
+  trackingNumber?: string | null;
+  packages?: Array<{ trackingNumber?: string }>;
+};
+
+function trackingOf(row: CreatedRow | null | undefined): string | null {
+  const t = row?.trackingNumber || row?.packages?.[0]?.trackingNumber || null;
+  return t ? String(t) : null;
+}
+
+/** Only a CreateOrders `createdOrders` row counts as a new Click & Drop order. */
+export function parseCreateOrdersResponse(json: unknown): { id: string; tracking: string | null; reference: string | null } {
+  if (!json || typeof json !== "object") {
+    throw new Error("Click & Drop returned an empty response.");
+  }
+  const o = json as Record<string, unknown>;
+  const failMsg = errorText(json, "");
+  if (typeof o.successCount === "number" && o.successCount < 1) {
+    throw new Error(failMsg || "Click & Drop did not create the order.");
+  }
+  const created = Array.isArray(o.createdOrders) ? (o.createdOrders as CreatedRow[]) : [];
+  const row = created[0];
+  const id = row?.orderIdentifier;
+  if (id == null || id === "") {
+    throw new Error(failMsg || "Click & Drop did not create the order. Check the address and try again.");
+  }
+  return {
+    id: String(id),
+    tracking: trackingOf(row),
+    reference: row.orderReference ? String(row.orderReference) : null,
+  };
+}
+
+function looksLikeServiceError(msg: string): boolean {
+  return /service code|not supported|could not be found|postageDetails/i.test(msg);
 }
 
 export async function testRoyalMail(apiKey: string): Promise<{ ok: true; release: string }> {
@@ -159,6 +212,19 @@ export async function testRoyalMail(apiKey: string): Promise<{ ok: true; release
   return { ok: true, release };
 }
 
+async function postOrders(apiKey: string, payload: unknown): Promise<{ json: unknown; res: Response }> {
+  // Official Click & Drop docs use POST /Orders (capital O).
+  const res = await rmFetch("/Orders", apiKey, { method: "POST", body: JSON.stringify(payload) });
+  const json = await res.json().catch(() => null);
+  if (res.status === 404) {
+    const retry = await rmFetch("/orders", apiKey, { method: "POST", body: JSON.stringify(payload) });
+    const retryJson = await retry.json().catch(() => null);
+    return { json: retryJson, res: retry };
+  }
+  return { json, res };
+}
+
+/** Create a Click & Drop order. OLP (non-OBA) accounts cannot retrieve labels. */
 export async function createRoyalMailLabel(
   apiKey: string,
   detail: SaleOrderDetail,
@@ -171,68 +237,64 @@ export async function createRoyalMailLabel(
 ): Promise<PostageResult> {
   const key = apiKey.trim();
   if (!key) throw new Error("Add a Royal Mail Click & Drop key in Settings.");
-  const payload = buildClickAndDropOrder(detail, { ...opts, includeLabel: true });
-  const res = await rmFetch("/Orders", key, { method: "POST", body: JSON.stringify(payload) });
-  const json = (await res.json().catch(() => null)) as {
-    createdOrders?: Array<{
-      orderIdentifier?: number | string;
-      orderReference?: string;
-      trackingNumber?: string;
-      label?: string;
-      packages?: Array<{ trackingNumber?: string }>;
-      labelErrors?: Array<{ message?: string; errorMessage?: string }>;
-    }>;
-    failedOrders?: Array<{ errors?: Array<{ message?: string; errorMessage?: string }> }>;
-  } | null;
-  if (!res.ok) throw new Error(errorText(json, `Royal Mail create order failed (${res.status}).`));
-  const created = json?.createdOrders?.[0];
-  if (!created?.orderIdentifier) {
-    throw new Error(errorText(json, "Royal Mail did not create the order. Check the service and address."));
+  let payload = buildClickAndDropOrder(detail, opts);
+  let { json, res } = await postOrders(key, payload);
+  let msg = errorText(json, "");
+  if (!res.ok && looksLikeServiceError(msg)) {
+    payload = buildClickAndDropOrder(detail, { ...opts, serviceCode: "" });
+    ({ json, res } = await postOrders(key, payload));
+    msg = errorText(json, "");
   }
-  const id = String(created.orderIdentifier);
-  let labelPdf = asBase64Pdf(created.label);
-  let tracking = created.trackingNumber || created.packages?.[0]?.trackingNumber || null;
-  if (!labelPdf) {
-    const printed = await fetchRoyalMailLabel(key, id);
-    labelPdf = printed.labelPdf;
-    tracking = tracking || printed.trackingNumber;
+  if (!res.ok) throw new Error(msg || `Royal Mail create order failed (${res.status}).`);
+  let created;
+  try {
+    created = parseCreateOrdersResponse(json);
+  } catch (err) {
+    if (looksLikeServiceError(msg || (err instanceof Error ? err.message : ""))) {
+      payload = buildClickAndDropOrder(detail, { ...opts, serviceCode: "" });
+      ({ json, res } = await postOrders(key, payload));
+      if (!res.ok) throw new Error(errorText(json, `Royal Mail create order failed (${res.status}).`));
+      created = parseCreateOrdersResponse(json);
+    } else {
+      throw err;
+    }
   }
-  if (created.labelErrors?.[0]) {
-    const msg = created.labelErrors[0].message || created.labelErrors[0].errorMessage;
-    if (!labelPdf && msg) throw new Error(msg);
+  let tracking = created.tracking;
+  if (!tracking) {
+    const pulled = await fetchRoyalMailOrder(key, created.id).catch(() => null);
+    tracking = pulled?.trackingNumber ?? null;
   }
   return {
-    orderIdentifier: id,
+    orderIdentifier: created.id,
     trackingNumber: tracking,
     serviceCode: opts.serviceCode,
-    labelPdf,
+    labelPdf: null,
   };
 }
 
-export async function fetchRoyalMailLabel(apiKey: string, orderIdentifier: string): Promise<PostageResult> {
-  const path =
-    `/Orders/${encodeURIComponent(orderIdentifier)}/label` +
-    `?documentType=postageLabel&includeReturnsLabel=false`;
-  const res = await rmFetch(path, apiKey);
-  const type = res.headers.get("content-type") || "";
-  if (!res.ok) {
-    const json = await res.json().catch(() => null);
-    throw new Error(errorText(json, `Royal Mail could not print that label (${res.status}).`));
-  }
-  if (type.includes("pdf")) {
-    const buf = Buffer.from(await res.arrayBuffer());
-    return {
-      orderIdentifier,
-      trackingNumber: null,
-      serviceCode: "",
-      labelPdf: buf.toString("base64"),
-    };
-  }
-  const json = (await res.json().catch(() => null)) as { label?: string; trackingNumber?: string } | null;
+export async function fetchRoyalMailOrder(apiKey: string, orderIdentifier: string): Promise<PostageResult> {
+  const id = encodeURIComponent(orderIdentifier);
+  let res = await rmFetch(`/Orders/${id}`, apiKey);
+  if (res.status === 404) res = await rmFetch(`/orders/${id}`, apiKey);
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorText(json, `Royal Mail could not load that order (${res.status}).`));
+  const list: CreatedRow[] = Array.isArray(json)
+    ? (json as CreatedRow[])
+    : Array.isArray((json as { orders?: CreatedRow[] } | null)?.orders)
+      ? ((json as { orders: CreatedRow[] }).orders)
+      : Array.isArray((json as { createdOrders?: CreatedRow[] } | null)?.createdOrders)
+        ? ((json as { createdOrders: CreatedRow[] }).createdOrders)
+        : [];
+  const row = list.find((r) => String(r.orderIdentifier) === String(orderIdentifier)) ?? list[0];
   return {
     orderIdentifier,
-    trackingNumber: json?.trackingNumber ?? null,
+    trackingNumber: trackingOf(row),
     serviceCode: "",
-    labelPdf: asBase64Pdf(json?.label),
+    labelPdf: null,
   };
+}
+
+/** OBA-only. OLP accounts cannot retrieve labels — kept for older saved PDFs. */
+export async function fetchRoyalMailLabel(apiKey: string, orderIdentifier: string): Promise<PostageResult> {
+  return fetchRoyalMailOrder(apiKey, orderIdentifier);
 }

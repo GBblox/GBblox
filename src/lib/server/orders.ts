@@ -6,6 +6,7 @@ import { listBricklinkOrders, bricklinkCredsFrom, fetchBricklinkOrder } from "@/
 import { getSql } from "@/lib/db";
 import { fetchEbayOrder, listEbaySoldOrders } from "@/lib/ebay";
 import { marketplaceOf } from "@/lib/format";
+import { applySoldOrders, applySoldSale, isPaidSale, saleLineSkus } from "@/lib/sold-sync";
 import type { MarketplaceId, SaleAddress, SaleChannel, SaleLine, SaleOrder, SaleOrderDetail, SalesResult } from "@/lib/types";
 
 const credsSchema = z.object({
@@ -202,6 +203,33 @@ export const listSales = createServerFn({ method: "POST" }).middleware([authMidd
       return { ...o, pulled: true, items: hit.items.length ? hit.items : o.items };
     });
     for (const leftover of storedMap.values()) merged.push(leftover);
+
+    const creds = {
+      ebayUserToken: token,
+      marketplace: market.id,
+      blConsumerKey: data.blConsumerKey,
+      blConsumerSecret: data.blConsumerSecret,
+      blToken: data.blToken,
+      blTokenSecret: data.blTokenSecret,
+    };
+    if (bl) {
+      for (const order of merged) {
+        if (order.channel !== "bricklink" || !isPaidSale("bricklink", order.status)) continue;
+        if (saleLineSkus(order.items).length) continue;
+        try {
+          const detail = await fetchBricklinkOrder(bl, order.id);
+          order.items = detail.items;
+          order.itemCount = detail.itemCount;
+          order.pulled = true;
+          await saveSale({ ...detail, pulled: true });
+        } catch (err) {
+          warnings.push(
+            `#${order.id}: ${err instanceof Error ? err.message : "Could not pull BrickLink items"}`,
+          );
+        }
+      }
+    }
+    warnings.push(...(await applySoldOrders(merged, creds)));
     return { orders: sortSales(merged), warnings };
   });
 
@@ -222,7 +250,10 @@ export const getSaleOrder = createServerFn({ method: "POST" }).middleware([authM
         stored &&
         stored.channel === "bricklink" &&
         (stored.items.length === 0 || stored.items.every((it) => it.title === "BrickLink item" || !it.itemNo));
-      if (stored && !stale) return stored;
+      if (stored && !stale) {
+        await applySoldSale(stored, data).catch(() => null);
+        return stored;
+      }
     }
     let detail: SaleOrderDetail;
     if (channel === "bricklink") {
@@ -237,6 +268,7 @@ export const getSaleOrder = createServerFn({ method: "POST" }).middleware([authM
     }
     detail = { ...detail, pulled: true };
     await saveSale(detail);
+    await applySoldSale(detail, data);
     const stored = (await listStored()).find((s) => s.channel === channel && s.id === id);
     return { ...detail, postage: stored?.postage ?? null };
   });

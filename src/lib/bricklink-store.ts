@@ -170,6 +170,18 @@ export async function createBricklinkLot(creds: BricklinkCreds, set: LegoSet): P
   return toLot(created);
 }
 
+export async function deleteBricklinkInventory(creds: BricklinkCreds, inventoryId: string): Promise<void> {
+  const id = inventoryId.trim();
+  if (!id) return;
+  try {
+    await blFetch("DELETE", `/inventories/${encodeURIComponent(id)}`, creds);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (/not found|does not exist|resource not found|no longer/i.test(msg)) return;
+    throw err;
+  }
+}
+
 export async function testBricklinkCreds(creds: BricklinkCreds): Promise<{ lots: number }> {
   const lots = await listBricklinkInventories(creds);
   return { lots: lots.length };

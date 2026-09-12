@@ -557,6 +557,49 @@ export async function listEbaySoldOrders(
   return orders;
 }
 
+export async function endEbayListing(
+  token: string,
+  siteId: string,
+  opts: { sku?: string | null; itemId?: string | null },
+): Promise<void> {
+  const sku = opts.sku?.trim();
+  const itemId = opts.itemId?.trim();
+  if (!sku && !itemId) throw new Error("Need an eBay SKU or item id to end the listing.");
+
+  const tryCall = async (call: string, xml: string) => {
+    const body = await tradingCall(call, xml, token, siteId);
+    const ack = xmlTag(body, "Ack");
+    if (ack === "Success" || ack === "Warning") return;
+    const long = decodeXml(xmlTag(body, "LongMessage")) ?? decodeXml(xmlTag(body, "ShortMessage")) ?? "";
+    if (/already (been )?(closed|ended|completed)|does not exist|no longer available/i.test(long)) return;
+    throw new Error(long || `eBay could not end listing (${call}).`);
+  };
+
+  if (sku) {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<EndFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <SKU>${escapeXml(sku)}</SKU>
+  <EndingReason>NotAvailable</EndingReason>
+</EndFixedPriceItemRequest>`;
+    try {
+      await tryCall("EndFixedPriceItem", xml);
+      return;
+    } catch (err) {
+      if (!itemId) throw err;
+    }
+  }
+  if (itemId) {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <ItemID>${escapeXml(itemId)}</ItemID>
+  <EndingReason>NotAvailable</EndingReason>
+</EndItemRequest>`;
+    await tryCall("EndItem", xml);
+  }
+}
+
 export async function fetchEbayOrder(
   token: string,
   siteId: string,

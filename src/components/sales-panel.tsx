@@ -32,7 +32,11 @@ export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string
 
   const query = useQuery({
     queryKey: ["sales", settings.ebayUserToken, settings.blToken, settings.marketplace],
-    queryFn: () => listSales({ data: credentialsOf(settings) }),
+    queryFn: async () => {
+      const data = await listSales({ data: credentialsOf(settings) });
+      void qc.invalidateQueries({ queryKey: ["sets"] });
+      return data;
+    },
     enabled: canEbay || canBl,
   });
 

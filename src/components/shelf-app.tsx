@@ -28,8 +28,7 @@ import {
   statusBadgeVariant,
   statusLabel,
 } from "@/lib/format";
-import { fillBricklinkPrices, listSets, seedDemoCatalog, syncListings } from "@/lib/server/sets";
-import { mergeLocationOptions } from "@/lib/locations";
+import { fillBricklinkPrices, listSets, syncListings } from "@/lib/server/sets";
 import { bricklinkCanSync, credentialsOf, ebayCanPublish, ebayIsConnected, rehydrateSettings, useSettings } from "@/lib/settings";
 import { rehydratePrinterSettings } from "@/lib/printer-settings";
 import { shelfBucket, type LegoSet, type ShelfBucket } from "@/lib/types";
@@ -153,25 +152,6 @@ export function ShelfApp() {
       return Array.isArray(rows) ? rows : [];
     },
   });
-
-  useEffect(() => {
-    let live = true;
-    void seedDemoCatalog({ data: {} })
-      .then((res) => {
-        if (!live || !res.added) return;
-        qc.invalidateQueries({ queryKey: ["sets"] });
-        settings.setSettings({
-          locations: mergeLocationOptions(settings.locations ?? [], res.locations),
-        });
-        toast.success(`Loaded ${res.added} demo lots`);
-      })
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-    // Seed once on mount; settings are read at that moment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qc]);
 
   const matchAll = useMutation({
     mutationFn: () => syncListings({ data: { settings: credentialsOf(settings) } }),

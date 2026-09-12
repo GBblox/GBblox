@@ -29,7 +29,7 @@ const PAGES: { id: SettingsPage; title: string; blurb: string; icon: typeof MapP
   { id: "rebrickable", title: "Rebrickable", blurb: "Catalog API key", icon: KeyRound },
   { id: "ebay", title: "eBay API", blurb: "App ID and user token", icon: Store },
   { id: "bricklink", title: "BrickLink store", blurb: "Price guide and listing", icon: KeyRound },
-  { id: "royalmail", title: "Royal Mail", blurb: "Click & Drop postage", icon: Truck },
+  { id: "royalmail", title: "Royal Mail", blurb: "Click & Drop (OLP)", icon: Truck },
 ];
 
 export function SettingsSheet() {
@@ -442,7 +442,7 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              UK Click & Drop API at api.parcel.royalmail.com. The authorisation key lives in your Click & Drop account under Settings → Integrations.
+              Pay-as-you-go Click & Drop (OLP, not an OBA business account). Orders are sent to the Click & Drop app — labels are printed there, not in GBblox.
             </p>
             <div className="space-y-2">
               <Label htmlFor="rm-key">Click & Drop authorisation key</Label>
@@ -474,10 +474,21 @@ export function SettingsSheet() {
               Test Click & Drop
             </Button>
             <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-muted">
-              <li>Sign in at clickanddrop.royalmail.com with your UK business account</li>
-              <li>Settings → Integrations → add an API integration and copy the authorisation key</li>
-              <li>Set the default trading name there so the return address prints on labels</li>
-              <li>Paste the key here, then create labels from a sale order</li>
+              <li>
+                Sign in at{" "}
+                <a
+                  href="https://business.parcel.royalmail.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-link underline"
+                >
+                  business.parcel.royalmail.com
+                </a>
+              </li>
+              <li>Settings → Integrations → add Click & Drop API and copy the authorisation key</li>
+              <li>Tick “Use shipping address for billing address” on that integration</li>
+              <li>Paste the key here and Test Click & Drop</li>
+              <li>From a sale, send the order to Click & Drop, then print the label in that app</li>
             </ol>
           </section>
           ) : null}

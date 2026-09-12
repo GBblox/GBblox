@@ -22,7 +22,6 @@ import { getSql } from "@/lib/db";
 import { marketplaceOf, normalizeLocation, isValidLocation } from "@/lib/format";
 import { fetchMarketPrice } from "@/lib/prices";
 import { parseInventoryCsv } from "@/lib/csv";
-import { DEMO_LOTS, demoImageUrl } from "@/lib/demo-catalog";
 import {
   formatSku,
   isValidSku,
@@ -523,73 +522,6 @@ export const importCsv = createServerFn({ method: "POST" }).middleware([authMidd
 
     return { added, updated, skipped: issues.length, issues: issues.slice(0, 40) };
   });
-
-export const seedDemoCatalog = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({}).optional())
-  .handler(async () => {
-  const sql = await getSql();
-  const existing = await sql<{ id: number; item_type: string; sku: string | null }>`
-    select id, item_type, sku from lego_sets order by id
-  `;
-  const oldAuto = /^GBB-(SET|MINIFIG)-[A-Z0-9]+-\d+$/;
-  const toRewrite = existing.filter((row) => oldAuto.test((row.sku ?? "").toUpperCase()));
-  if (toRewrite.length) {
-    for (const row of toRewrite) {
-      await sql`update lego_sets set sku = ${`GBB-TMP-${row.id}`} where id = ${row.id}`;
-    }
-    const byType = { set: 0, minifig: 0 };
-    for (const row of toRewrite) {
-      const type = row.item_type === "minifig" ? "minifig" : "set";
-      byType[type] += 1;
-      const next = formatSku("", type, byType[type]);
-      await sql`update lego_sets set sku = ${next} where id = ${row.id}`;
-    }
-  }
-
-  const seq = new Map<string, number>();
-  const used = await sql<{ sku: string | null }>`select sku from lego_sets`;
-  for (const row of used) {
-    const sku = (row.sku ?? "").toUpperCase();
-    if (sku.startsWith("GBB-SET-") && /^\d+$/.test(sku.slice("GBB-SET-".length))) {
-      seq.set("set", Math.max(seq.get("set") ?? 0, Number(sku.slice("GBB-SET-".length))));
-    }
-    if (sku.startsWith("GBB-MINIFIG-") && /^\d+$/.test(sku.slice("GBB-MINIFIG-".length))) {
-      seq.set("minifig", Math.max(seq.get("minifig") ?? 0, Number(sku.slice("GBB-MINIFIG-".length))));
-    }
-  }
-
-  let added = 0;
-  const locations: string[] = [];
-  for (const lot of DEMO_LOTS) {
-    const key = lot.itemType;
-    const n = (seq.get(key) ?? 0) + 1;
-    seq.set(key, n);
-    const sku = formatSku(lot.setNum, lot.itemType, n);
-    const location = cleanLocation(lot.location);
-    const imageUrl = demoImageUrl(lot);
-    try {
-      const rows = await sql<{ id: number }>`
-        insert into lego_sets (
-          item_type, set_num, sku, location, name, year, theme, theme_id, category, sub_category, weight_grams,
-          num_parts, image_url, condition, comes_with_instructions, comes_with_box, qty, asking_price, currency, notes, status
-        ) values (
-          ${lot.itemType}, ${lot.setNum}, ${sku}, ${location}, ${lot.name}, ${lot.year}, ${lot.category}, ${null},
-          ${lot.category}, ${lot.subCategory}, ${null}, ${null}, ${imageUrl}, ${lot.condition}, ${lot.instructions},
-          ${lot.box}, ${lot.qty}, ${lot.price}, ${"GBP"}, ${lot.notes}, ${lot.status}
-        )
-        on conflict (sku) do nothing
-        returning id
-      `;
-      if (rows[0]) {
-        added += 1;
-        if (location) locations.push(location);
-      }
-    } catch {
-      /* skip a row that cannot insert */
-    }
-  }
-  return { added, total: DEMO_LOTS.length, locations: [...new Set(locations)] };
-});
 
 export const updateSet = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(

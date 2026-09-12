@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Printer, Stamp, TriangleAlert } from "lucide-react";
+import { ExternalLink, Loader2, RefreshCw, Stamp, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -7,46 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RM_PACKAGES, RM_SERVICES, serviceLabel } from "@/lib/royal-mail";
+import { CLICK_AND_DROP_APP, RM_PACKAGES, RM_SERVICES, serviceLabel } from "@/lib/royal-mail";
 import { createPostage, reprintPostage } from "@/lib/server/postage";
 import { credentialsOf, royalMailCanPost, useSettings } from "@/lib/settings";
 import type { SaleOrderDetail } from "@/lib/types";
-
-function openPdf(base64: string, mode: "print" | "download") {
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-  const blob = new Blob([bytes], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  if (mode === "download") {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "royal-mail-label.pdf";
-    a.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    return;
-  }
-  const iframe = document.createElement("iframe");
-  iframe.title = "Print postage label";
-  iframe.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0";
-  iframe.src = url;
-  const cleanup = () => {
-    iframe.remove();
-    URL.revokeObjectURL(url);
-  };
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    } catch {
-      const w = window.open(url, "_blank", "noopener");
-      if (w) w.addEventListener("load", () => w.print());
-      else toast.error("Allow pop-ups to print the postage label.");
-    }
-    window.setTimeout(cleanup, 120_000);
-  };
-  document.body.appendChild(iframe);
-}
 
 export function PostageCard({
   detail,
@@ -57,8 +21,7 @@ export function PostageCard({
 }) {
   const settings = useSettings();
   const canPost = royalMailCanPost(settings);
-  const [service, setService] = useState("TPN24");
-  const [customService, setCustomService] = useState("");
+  const [service, setService] = useState("TOLP24");
   const [pack, setPack] = useState("smallParcel");
   const [weight, setWeight] = useState("500");
   const [confirm, setConfirm] = useState(false);
@@ -70,7 +33,7 @@ export function PostageCard({
           ...credentialsOf(settings),
           channel: detail.channel,
           id: detail.id,
-          serviceCode: (customService.trim() || service).toUpperCase(),
+          serviceCode: service,
           packageFormat: pack,
           weightGrams: Math.max(1, Number(weight) || 500),
         },
@@ -78,13 +41,16 @@ export function PostageCard({
     onSuccess: (row) => {
       onUpdated(row);
       setConfirm(false);
-      toast.success(row.postage?.trackingNumber ? `Tracking ${row.postage.trackingNumber}` : "Postage label created");
-      if (row.postage?.labelPdf) openPdf(row.postage.labelPdf, "print");
+      toast.success(
+        row.postage?.trackingNumber
+          ? `Click & Drop #${row.postage.orderIdentifier} · ${row.postage.trackingNumber}`
+          : `Click & Drop #${row.postage?.orderIdentifier} — look under New orders`,
+      );
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Royal Mail failed"),
   });
 
-  const reprint = useMutation({
+  const refresh = useMutation({
     mutationFn: () =>
       reprintPostage({
         data: {
@@ -95,10 +61,9 @@ export function PostageCard({
       }),
     onSuccess: (row) => {
       onUpdated(row);
-      toast.success("Label ready");
-      if (row.postage?.labelPdf) openPdf(row.postage.labelPdf, "print");
+      toast.success(row.postage?.trackingNumber ? `Tracking ${row.postage.trackingNumber}` : "No tracking yet");
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Reprint failed"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not refresh Click & Drop"),
   });
 
   const addrOk = Boolean(detail.address?.line1 && detail.address?.postal);
@@ -108,7 +73,7 @@ export function PostageCard({
     <section className="rounded-md bg-surface-2 p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold tracking-wide text-muted uppercase">Royal Mail Click & Drop</p>
-        {postage ? <Badge variant="sale">Label paid</Badge> : null}
+        {postage ? <Badge variant="sale">In Click & Drop</Badge> : null}
       </div>
 
       {!canPost ? (
@@ -127,33 +92,31 @@ export function PostageCard({
                 {" · "}
                 <span className="font-mono font-semibold">{postage.trackingNumber}</span>
               </>
-            ) : null}
+            ) : (
+              <span className="text-muted"> · look under New orders, not printed labels</span>
+            )}
+          </p>
+          <p className="font-mono text-xs text-subtle">
+            Click & Drop #{postage.orderIdentifier} · search {`BS-${detail.channel}-${detail.id}`}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={!postage.labelPdf || reprint.isPending}
-              onClick={() => postage.labelPdf && openPdf(postage.labelPdf, "print")}
-            >
-              <Printer />
-              Print label
+            <Button size="sm" asChild>
+              <a href={CLICK_AND_DROP_APP} target="_blank" rel="noreferrer">
+                <ExternalLink />
+                Open Click & Drop
+              </a>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!postage.labelPdf}
-              onClick={() => postage.labelPdf && openPdf(postage.labelPdf, "download")}
-            >
-              Download PDF
-            </Button>
-            <Button variant="outline" size="sm" disabled={reprint.isPending} onClick={() => reprint.mutate()}>
-              {reprint.isPending ? <Loader2 className="animate-spin" /> : <Stamp />}
-              Reprint
+            <Button variant="outline" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+              {refresh.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              Refresh tracking
             </Button>
           </div>
         </div>
       ) : (
         <div className="mt-3 space-y-3">
+          <p className="text-xs text-muted">
+            Pay-as-you-go account — GBblox sends the order; you print the label in Click & Drop.
+          </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label>Service</Label>
@@ -169,12 +132,6 @@ export function PostageCard({
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                value={customService}
-                onChange={(e) => setCustomService(e.target.value)}
-                placeholder="Or paste the code from Click & Drop"
-                className="mt-1.5 font-mono text-xs"
-              />
             </div>
             <div className="space-y-1.5">
               <Label>Package</Label>
@@ -204,13 +161,14 @@ export function PostageCard({
           {confirm ? (
             <div className="space-y-2 rounded-md bg-surface p-3 text-sm shadow-[var(--shadow-border)]">
               <p>
-                This charges your Royal Mail Click & Drop account and prints a{" "}
-                <span className="font-semibold">{serviceLabel(service)}</span> label.
+                Send this order to Click & Drop as{" "}
+                <span className="font-semibold">{serviceLabel(service)}</span>. Postage is paid when you print
+                in the Click & Drop app.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={create.isPending} onClick={() => create.mutate()}>
                   {create.isPending ? <Loader2 className="animate-spin" /> : <Stamp />}
-                  Pay & print
+                  Send to Click & Drop
                 </Button>
                 <Button variant="outline" size="sm" disabled={create.isPending} onClick={() => setConfirm(false)}>
                   Cancel
@@ -220,7 +178,7 @@ export function PostageCard({
           ) : (
             <Button size="sm" onClick={() => setConfirm(true)}>
               <Stamp />
-              Pay & print label
+              Send to Click & Drop
             </Button>
           )}
         </div>
