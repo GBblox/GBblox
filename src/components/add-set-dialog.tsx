@@ -26,9 +26,6 @@ import { ImagePicker } from "@/components/image-picker";
 import { BatchNumberSelect, batchFieldHint } from "@/components/batch-select";
 import { cn } from "@/lib/utils";
 
-const SET_SUGGESTIONS = ["10294", "75192", "10307", "21061"];
-const FIG_SUGGESTIONS = ["sw0001", "sw1070", "hp001", "col001"];
-
 export function AddSetDialog({
   open,
   onOpenChange,
@@ -244,27 +241,10 @@ export function AddSetDialog({
                   setPicked(null);
                   setSku("");
                 }}
-                placeholder="75192, sw0001, hp001, or name"
+                placeholder="Item number or name"
                 className="pl-9"
                 autoFocus
               />
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(kind === "minifig" ? FIG_SUGGESTIONS : kind === "set" ? SET_SUGGESTIONS : [...SET_SUGGESTIONS, ...FIG_SUGGESTIONS]).map(
-                (s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className="rounded-sm bg-surface-2 px-2.5 py-1 font-mono text-xs font-medium text-link hover:bg-surface-2/80"
-                  onClick={() => {
-                    setQuery(s);
-                    setPicked(null);
-                    setSku("");
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
             </div>
           </div>
 
