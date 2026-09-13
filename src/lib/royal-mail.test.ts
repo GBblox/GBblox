@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildClickAndDropOrder, countryCode, parseCreateOrdersResponse, requiredCity } from "./royal-mail.ts";
+import { buildClickAndDropOrder, countryCode, normalizeRoyalMailKey, parseCreateOrdersResponse, requiredCity } from "./royal-mail.ts";
 import type { SaleOrderDetail } from "./types.ts";
 
 const detail: SaleOrderDetail = {
@@ -37,6 +37,12 @@ const detail: SaleOrderDetail = {
 };
 
 describe("royal mail click and drop", () => {
+  it("strips quotes and Bearer from the Click & Drop key", () => {
+    assert.equal(normalizeRoyalMailKey('  "Bearer abc-def"  '), "abc-def");
+    assert.equal(normalizeRoyalMailKey("bearer xyz"), "xyz");
+    assert.equal(normalizeRoyalMailKey("plain-key"), "plain-key");
+  });
+
   it("maps UK country names to GBR for OLP Click & Drop", () => {
     assert.equal(countryCode("United Kingdom"), "GBR");
     assert.equal(countryCode("uk"), "GBR");

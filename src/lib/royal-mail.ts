@@ -137,19 +137,39 @@ export function buildClickAndDropOrder(
   };
 }
 
+export function normalizeRoyalMailKey(apiKey: string): string {
+  return apiKey
+    .trim()
+    .replace(/^["']+|["']+$/g, "")
+    .trim()
+    .replace(/^bearer\s+/i, "")
+    .trim();
+}
+
+function authHeaders(token: string): string[] {
+  // Official help article sends the raw key. OpenAPI lists "Bearer <key>".
+  return [token, `Bearer ${token}`];
+}
+
 async function rmFetch(path: string, apiKey: string, init: RequestInit = {}): Promise<Response> {
-  const key = apiKey.trim();
-  const authorization = /^bearer\s/i.test(key) ? key : key;
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      Authorization: authorization,
-      Accept: "application/json, application/pdf",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
-  return res;
+  const token = normalizeRoyalMailKey(apiKey);
+  if (!token) throw new Error("Add a Royal Mail Click & Drop key in Settings.");
+  let last: Response | null = null;
+  for (const authorization of authHeaders(token)) {
+    last = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: authorization,
+        Accept: "application/json, application/pdf",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+    if (last.status !== 401) return last;
+  }
+  throw new Error(
+    "Royal Mail Click & Drop rejected the API key (401). In Click & Drop go to Settings → Integrations → Click & Drop API, copy the authorisation key, and set ROYAL_MAIL_API_KEY on Vercel (not your login password).",
+  );
 }
 
 function errorText(json: unknown, fallback: string): string {
