@@ -5,7 +5,7 @@ import { z } from "zod";
 import { getSql } from "@/lib/db";
 import { createRoyalMailLabel, fetchRoyalMailOrder, testRoyalMail } from "@/lib/royal-mail";
 import type { PostageLabel, SaleOrderDetail } from "@/lib/types";
-import { getSaleOrder } from "./orders";
+import { loadStoredSale } from "./orders";
 import { applyMarketplaceEnv } from "./marketplace-env";
 
 const credsSchema = z.object({
@@ -21,6 +21,12 @@ const credsSchema = z.object({
   royalMailApiKey: z.string().optional().default(""),
   royalMailSenderName: z.string().optional().default(""),
 });
+
+async function saleForPostage(channel: "ebay" | "bricklink", id: string): Promise<SaleOrderDetail> {
+  const stored = await loadStoredSale(channel, id);
+  if (stored) return stored;
+  throw new Error("Open the order first so GBblox has the address, then send to Click & Drop.");
+}
 
 async function savePostage(channel: string, id: string, postage: PostageLabel): Promise<void> {
   const sql = await getSql();
@@ -57,19 +63,7 @@ export const createPostage = createServerFn({ method: "POST" }).middleware([auth
     const creds = applyMarketplaceEnv(data);
     const key = creds.royalMailApiKey;
     if (!key) throw new Error("Set ROYAL_MAIL_API_KEY as a Vercel environment variable.");
-    const detail = await getSaleOrder({
-      data: {
-        ebayUserToken: creds.ebayUserToken,
-        blConsumerKey: creds.blConsumerKey,
-        blConsumerSecret: creds.blConsumerSecret,
-        blToken: creds.blToken,
-        blTokenSecret: creds.blTokenSecret,
-        marketplace: data.marketplace,
-        channel: data.channel,
-        id: data.id,
-        refresh: false,
-      },
-    });
+    const detail = await saleForPostage(data.channel, data.id);
     const result = await createRoyalMailLabel(key, detail, {
       serviceCode: data.serviceCode,
       packageFormat: data.packageFormat,
@@ -98,19 +92,7 @@ export const reprintPostage = createServerFn({ method: "POST" }).middleware([aut
     const creds = applyMarketplaceEnv(data);
     const key = creds.royalMailApiKey;
     if (!key) throw new Error("Set ROYAL_MAIL_API_KEY as a Vercel environment variable.");
-    const detail = await getSaleOrder({
-      data: {
-        ebayUserToken: creds.ebayUserToken,
-        blConsumerKey: creds.blConsumerKey,
-        blConsumerSecret: creds.blConsumerSecret,
-        blToken: creds.blToken,
-        blTokenSecret: creds.blTokenSecret,
-        marketplace: data.marketplace,
-        channel: data.channel,
-        id: data.id,
-        refresh: false,
-      },
-    });
+    const detail = await saleForPostage(data.channel, data.id);
     const rmId = detail.postage?.orderIdentifier;
     if (!rmId) throw new Error("Send the order to Click & Drop first.");
     const printed = await fetchRoyalMailOrder(key, rmId);

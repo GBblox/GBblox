@@ -96,9 +96,9 @@ export async function requireUserId(bearerToken?: string): Promise<string> {
     const { isWorkspacePreview } = await import("../env.server");
     const { GOOGLE_LOGIN_PAUSED } = await import("../owner");
     const { passwordLoginRequired } = await import("../env-login");
+    if (GOOGLE_LOGIN_PAUSED) return DEV_USER_ID;
     if (passwordLoginRequired()) throw new UnauthorizedError();
     if (isWorkspacePreview()) return DEV_USER_ID;
-    if (GOOGLE_LOGIN_PAUSED) return DEV_USER_ID;
     throw new UnauthorizedError();
   }
   return user.id;

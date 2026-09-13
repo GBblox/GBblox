@@ -175,6 +175,13 @@ async function rmFetch(path: string, apiKey: string, init: RequestInit = {}): Pr
 function errorText(json: unknown, fallback: string): string {
   if (!json || typeof json !== "object") return fallback;
   const o = json as Record<string, unknown>;
+  const raw =
+    (typeof o.message === "string" && o.message) ||
+    (typeof o.detail === "string" && o.detail) ||
+    "";
+  if (/unauthorized|unauthorised|401/i.test(raw) || /unauthorized|unauthorised|401/i.test(fallback)) {
+    return "Royal Mail Click & Drop rejected the API key (401). In Click & Drop go to Settings → Integrations → Click & Drop API, copy the authorisation key, and set ROYAL_MAIL_API_KEY on Vercel (not your login password).";
+  }
   if (typeof o.message === "string" && o.message) return o.message;
   if (typeof o.detail === "string" && o.detail) return o.detail;
   const failed = o.failedOrders as Array<{ errors?: Array<{ message?: string; errorMessage?: string; errorCode?: string }> }> | undefined;

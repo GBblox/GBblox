@@ -26,10 +26,10 @@ export const ownerMiddleware = createMiddleware({ type: "function" })
       "bearerToken" in context ? (context.bearerToken as string | undefined) : undefined,
     );
     if (!user) {
-      if (passwordLoginRequired()) throw new UnauthorizedError();
       if (isWorkspacePreview() || GOOGLE_LOGIN_PAUSED) {
         return next({ context: { userId: DEV_USER_ID, email: "" } });
       }
+      if (passwordLoginRequired()) throw new UnauthorizedError();
       throw new UnauthorizedError();
     }
     if (!GOOGLE_LOGIN_PAUSED && !isOwnerEmail(user.email) && !isWorkspacePreview()) {

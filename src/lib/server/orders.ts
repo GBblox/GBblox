@@ -112,6 +112,11 @@ function sortSales<T extends { createdAt: string }>(orders: T[]): T[] {
   });
 }
 
+export async function loadStoredSale(channel: string, id: string): Promise<SaleOrderDetail | null> {
+  const rows = await listStored();
+  return rows.find((s) => s.channel === channel && s.id === id) ?? null;
+}
+
 async function listStored(): Promise<SaleOrderDetail[]> {
   const sql = await getSql();
   const rows = await sql<SaleRow>`select * from sales order by pulled_at desc`;
