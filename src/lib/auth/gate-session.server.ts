@@ -242,38 +242,18 @@ export function gateIdentitySessions() {
                 return null;
               });
               if (existing?.session && existing.user) {
-                const accounts = await ctx.context.internalAdapter
-                  .findAccounts(existing.user.id)
-                  .catch((err) => {
-                    console.error(`${LOG} findAccounts failed`, err);
-                    return null;
-                  });
-                if (!accounts) {
-                  console.error(
-                    `${LOG} could not load accounts for existing session user`,
-                    { userId: existing.user.id },
-                  );
-                  return;
-                }
                 if (
                   sessionBoundToGateIdentity(
-                    accounts,
+                    (await ctx.context.internalAdapter
+                      .findAccounts(existing.user.id)
+                      .catch(() => [])) ?? [],
                     identity.sub,
                     GATE_PROVIDER_ID,
                   )
                 ) {
                   await writeGateMarkerCookie(ctx, false);
-                  return;
                 }
-                await ctx.context.internalAdapter
-                  .deleteSession(existing.session.token)
-                  .catch((err) => {
-                    console.error(
-                      `${LOG} deleteSession (stale non-gate session) failed`,
-                      err,
-                    );
-                    return null;
-                  });
+                return;
               }
             }
 

@@ -100,15 +100,14 @@ export function LoginScreen() {
     setPending(true);
     try {
       const prepared = await prepareEnvLogin({ data: { username, password } });
-      if (!prepared.signedIn) {
-        const { error } = await authClient.signIn.email({
-          email: prepared.email,
-          password,
-          callbackURL: "/",
-        });
-        if (error) throw new Error(error.message || "Sign-in failed");
-      }
-      window.location.href = "/";
+      const { error } = await authClient.signIn.email({
+        email: prepared.email,
+        password,
+        rememberMe: true,
+        callbackURL: "/",
+      });
+      if (error) throw new Error(error.message || "Sign-in failed");
+      window.location.assign("/");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign-in failed");
       setPending(false);

@@ -27,9 +27,5 @@ export const prepareEnvLogin = createServerFn({ method: "POST" })
     } catch {
       /* already provisioned */
     }
-    await auth.api.signInEmail({
-      body: { email, password },
-      headers,
-    });
-    return { email, signedIn: true as const };
+    return { email, signedIn: false as const };
   });
