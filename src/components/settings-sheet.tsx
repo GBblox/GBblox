@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronLeft, ChevronUp, GripVertical, KeyRound, Loader2, MapPin, Plus, Settings, Store, Truck, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronUp, GripVertical, KeyRound, Loader2, MapPin, Plus, RefreshCw, Settings, Store, Truck, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { UserButton } from "@/lib/auth/gates";
 import { addLocationOption, isMinifigLocation, moveLocationOption, removeLocationOption } from "@/lib/locations";
-import { getEbayNotifyConfig, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
+import { getEbayNotifyConfig, listEbayPolicies, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
 import { testRoyalMailKey } from "@/lib/server/postage";
 import { useMarketplaceApis } from "@/lib/marketplace-apis";
 import { useSettings } from "@/lib/settings";
@@ -26,7 +26,7 @@ type SettingsPage = "locations" | "marketplace" | "rebrickable" | "ebay" | "bric
 
 const PAGES: { id: SettingsPage; title: string; blurb: string; icon: typeof MapPin }[] = [
   { id: "locations", title: "Locations", blurb: "Bins and shelves", icon: MapPin },
-  { id: "marketplace", title: "Marketplace", blurb: "eBay site and postage", icon: Store },
+  { id: "marketplace", title: "Marketplace", blurb: "eBay site, postage and policies", icon: Store },
   { id: "rebrickable", title: "Rebrickable", blurb: "Catalog API key", icon: KeyRound },
   { id: "ebay", title: "eBay API", blurb: "App ID and user token", icon: Store },
   { id: "bricklink", title: "BrickLink store", blurb: "Price guide and listing", icon: KeyRound },
@@ -299,25 +299,8 @@ export function SettingsSheet() {
                   placeholder="M1 1AE"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ship">Shipping cost</Label>
-                <Input
-                  id="ship"
-                  value={settings.shippingCost}
-                  onChange={(e) => setSettings({ shippingCost: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="handle">Handling days</Label>
-                <Input
-                  id="handle"
-                  value={settings.handlingDays}
-                  onChange={(e) => setSettings({ handlingDays: e.target.value })}
-                  placeholder="1"
-                />
-              </div>
             </div>
+            <EbayPolicyPickers />
           </section>
           ) : page === "rebrickable" ? (
 
@@ -576,3 +559,116 @@ function EnvStatus({ set, names }: { set?: boolean; names: string[] }) {
     </p>
   );
 }
+
+const NONE = "__none__";
+
+function EbayPolicyPickers() {
+  const settings = useSettings();
+  const setSettings = settings.setSettings;
+  const policies = useQuery({
+    queryKey: ["ebay-policies"],
+    queryFn: () => listEbayPolicies({ data: { token: settings.ebayUserToken } }),
+  });
+
+  function apply(kind: "payment" | "shipping" | "returns", id: string) {
+    const list = kind === "payment" ? policies.data?.payment : kind === "shipping" ? policies.data?.shipping : policies.data?.returns;
+    const hit = list?.find((p) => p.id === id);
+    if (kind === "payment") {
+      setSettings({ ebayPaymentPolicyId: id === NONE ? "" : id, ebayPaymentPolicyName: hit?.name ?? "" });
+    } else if (kind === "shipping") {
+      setSettings({ ebayShippingPolicyId: id === NONE ? "" : id, ebayShippingPolicyName: hit?.name ?? "" });
+    } else {
+      setSettings({ ebayReturnPolicyId: id === NONE ? "" : id, ebayReturnPolicyName: hit?.name ?? "" });
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">eBay business policies</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={policies.isFetching}
+          onClick={() => policies.refetch()}
+        >
+          {policies.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          Pull from eBay
+        </Button>
+      </div>
+      <p className="text-xs leading-relaxed text-muted">
+        Loaded from your eBay UK account. Selected policies are applied when you list. Leave as None to use the GBblox fallback (14-day returns, flat postage).
+      </p>
+      {policies.error ? (
+        <p className="text-xs text-danger">{policies.error instanceof Error ? policies.error.message : "Could not load policies."}</p>
+      ) : null}
+      <PolicySelect
+        label="Payment"
+        value={settings.ebayPaymentPolicyId ?? ""}
+        options={policies.data?.payment ?? []}
+        currentName={settings.ebayPaymentPolicyName}
+        onChange={(id) => apply("payment", id)}
+        loading={policies.isPending}
+      />
+      <PolicySelect
+        label="Postage"
+        value={settings.ebayShippingPolicyId ?? ""}
+        options={policies.data?.shipping ?? []}
+        currentName={settings.ebayShippingPolicyName}
+        onChange={(id) => apply("shipping", id)}
+        loading={policies.isPending}
+      />
+      <PolicySelect
+        label="Return"
+        value={settings.ebayReturnPolicyId ?? ""}
+        options={policies.data?.returns ?? []}
+        currentName={settings.ebayReturnPolicyName}
+        onChange={(id) => apply("returns", id)}
+        loading={policies.isPending}
+      />
+    </div>
+  );
+}
+
+function PolicySelect({
+  label,
+  value,
+  options,
+  currentName,
+  onChange,
+  loading,
+}: {
+  label: string;
+  value: string;
+  options: { id: string; name: string; summary: string; isDefault: boolean }[];
+  currentName?: string;
+  onChange: (id: string) => void;
+  loading: boolean;
+}) {
+  const missing = value && !options.some((p) => p.id === value);
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <Select value={value || NONE} onValueChange={onChange} disabled={loading}>
+        <SelectTrigger>
+          <SelectValue placeholder={loading ? "Loading…" : `Select ${label.toLowerCase()} policy`} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>None — GBblox fallback</SelectItem>
+          {missing ? <SelectItem value={value}>{currentName || value}</SelectItem> : null}
+          {options.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.name}
+              {p.isDefault ? " (default)" : ""}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {value && options.find((p) => p.id === value)?.summary ? (
+        <p className="text-[11px] leading-relaxed text-subtle">{options.find((p) => p.id === value)?.summary}</p>
+      ) : null}
+    </div>
+  );
+}
+

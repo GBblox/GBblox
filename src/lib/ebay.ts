@@ -40,14 +40,13 @@ export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch):
   if (patch.quantity != null) next.quantity = Math.max(1, Math.floor(patch.quantity));
   if (patch.categoryId?.trim()) next.categoryId = patch.categoryId.trim();
   if (patch.description != null) {
-    const img = draft.descriptionHtml.match(/<p><img[\s\S]*?<\/p>/i)?.[0] ?? "";
     const paras = patch.description
       .split(/\n+/)
       .map((p) => p.trim())
       .filter(Boolean)
       .map((p) => `<p>${escapeHtml(p)}</p>`)
       .join("\n");
-    next.descriptionHtml = [img, paras].filter(Boolean).join("\n");
+    next.descriptionHtml = paras;
   }
   return next;
 }
@@ -247,15 +246,21 @@ function escapeHtml(s: string): string {
     .replaceAll('"', "\u0026quot;");
 }
 
+function ebayTitleCondition(condition: Condition): string {
+  if (condition === "used_complete") return "Used · Complete";
+  if (condition === "used_incomplete") return "Used · Incomplete";
+  if (condition === "used_parts") return "Used · Parts";
+  if (condition === "new_sealed") return "New · Sealed";
+  if (condition === "new_opened") return "New · Opened";
+  return conditionLabel(condition);
+}
+
 export function composeListing(set: LegoSet, marketplace: MarketplaceId): ListingDraft {
   const num = itemNumberDisplay(set.setNum, set.itemType);
   const kind = set.itemType === "minifig" ? "Minifigure" : "";
   const title = clampTitle(
-    `LEGO ${kind} ${num} ${set.name}${set.year ? ` (${set.year})` : ""} ${conditionLabel(set.condition)}`.replace(/\s+/g, " "),
+    `LEGO ${kind} ${num} ${set.name}${set.year ? ` (${set.year})` : ""} ${ebayTitleCondition(set.condition)}`.replace(/\s+/g, " "),
   );
-  const img = set.imageUrl
-    ? `<p><img src="${escapeHtml(set.imageUrl)}" alt="${escapeHtml(set.name)}" /></p>`
-    : "";
   const notes = set.notes.trim()
     ? `<p><b>Seller notes</b><br/>${escapeHtml(set.notes).replaceAll("\n", "<br/>")}</p>`
     : "";
@@ -269,7 +274,6 @@ export function composeListing(set: LegoSet, marketplace: MarketplaceId): Listin
       ? "<p>All Stickered pieces are present where applicable.</p>"
       : "";
   const descriptionHtml = [
-    img,
     "<p>At GBblox we only sell <b>GENUINE LEGO</b> sets and minifigures.</p>",
     yearLine,
     ...conditionLines,
@@ -343,7 +347,7 @@ export function fileExchangeRow(set: LegoSet, settings: SellerSettings, draft: L
     settings.shippingCost || "0",
     "ReturnsAccepted",
     "MoneyBack",
-    "Days_30",
+    "Days_14",
     "Buyer",
     settings.handlingDays || "1",
     market.currency,
@@ -372,6 +376,11 @@ export async function publishToEbay(
   const shipService =
     market.id === "EBAY_GB" ? "UK_OtherCourier" : market.id === "EBAY_DE" ? "DE_DHLPaket" : "USPSPriority";
 
+  const payId = settings.ebayPaymentPolicyId?.trim() ?? "";
+  const shipId = settings.ebayShippingPolicyId?.trim() ?? "";
+  const returnId = settings.ebayReturnPolicyId?.trim() ?? "";
+  const useProfiles = Boolean(payId || shipId || returnId);
+
   let storeCat: StoreCat | null = null;
   try {
     storeCat = pickStoreCategory(await listEbayStoreCategories(token), set);
@@ -379,6 +388,33 @@ export async function publishToEbay(
     storeCat = null;
   }
   const categoryId = await suggestEbayUkCategory(token, set);
+
+  const profilesXml = useProfiles
+    ? `<SellerProfiles>
+    ${payId ? `<SellerPaymentProfile><PaymentProfileID>${escapeXml(payId)}</PaymentProfileID>${settings.ebayPaymentPolicyName?.trim() ? `<PaymentProfileName>${escapeXml(settings.ebayPaymentPolicyName.trim())}</PaymentProfileName>` : ""}</SellerPaymentProfile>` : ""}
+    ${shipId ? `<SellerShippingProfile><ShippingProfileID>${escapeXml(shipId)}</ShippingProfileID>${settings.ebayShippingPolicyName?.trim() ? `<ShippingProfileName>${escapeXml(settings.ebayShippingPolicyName.trim())}</ShippingProfileName>` : ""}</SellerShippingProfile>` : ""}
+    ${returnId ? `<SellerReturnProfile><ReturnProfileID>${escapeXml(returnId)}</ReturnProfileID>${settings.ebayReturnPolicyName?.trim() ? `<ReturnProfileName>${escapeXml(settings.ebayReturnPolicyName.trim())}</ReturnProfileName>` : ""}</SellerReturnProfile>` : ""}
+  </SellerProfiles>`
+    : "";
+  const returnXml = returnId
+    ? ""
+    : `<ReturnPolicy>
+      <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
+      <RefundOption>MoneyBack</RefundOption>
+      <ReturnsWithinOption>Days_14</ReturnsWithinOption>
+      <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
+    </ReturnPolicy>`;
+  const shippingXml = shipId
+    ? ""
+    : `<ShippingDetails>
+      <ShippingType>Flat</ShippingType>
+      <ShippingServiceOptions>
+        <ShippingServicePriority>1</ShippingServicePriority>
+        <ShippingService>${shipService}</ShippingService>
+        <ShippingServiceCost>${Number(settings.shippingCost) || 0}</ShippingServiceCost>
+      </ShippingServiceOptions>
+    </ShippingDetails>`;
+  const dispatchXml = shipId ? "" : `<DispatchTimeMax>${Number(settings.handlingDays) || 1}</DispatchTimeMax>`;
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -390,13 +426,14 @@ export async function publishToEbay(
     <PrimaryCategory><CategoryID>${escapeXml(categoryId)}</CategoryID></PrimaryCategory>
     ${itemSpecificsXml(set)}
     ${storefrontXml(storeCat)}
+    ${profilesXml}
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
     <CategoryMappingAllowed>true</CategoryMappingAllowed>
     <ConditionID>${draft.conditionId}</ConditionID>
     <ConditionDescription>${escapeXml(conditionDescription(set))}</ConditionDescription>
     <Country>GB</Country>
     <Currency>GBP</Currency>
-    <DispatchTimeMax>${Number(settings.handlingDays) || 1}</DispatchTimeMax>
+    ${dispatchXml}
     <ListingDuration>GTC</ListingDuration>
     <ListingType>FixedPriceItem</ListingType>
     <Location>${escapeXml(location)}</Location>
@@ -405,20 +442,8 @@ export async function publishToEbay(
     <SKU>${escapeXml(draft.sku)}</SKU>
     <InventoryTrackingMethod>SKU</InventoryTrackingMethod>
     ${draft.pictureUrl ? `<PictureDetails><PictureURL>${escapeXml(draft.pictureUrl)}</PictureURL></PictureDetails>` : ""}
-    <ReturnPolicy>
-      <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
-      <RefundOption>MoneyBack</RefundOption>
-      <ReturnsWithinOption>Days_30</ReturnsWithinOption>
-      <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
-    </ReturnPolicy>
-    <ShippingDetails>
-      <ShippingType>Flat</ShippingType>
-      <ShippingServiceOptions>
-        <ShippingServicePriority>1</ShippingServicePriority>
-        <ShippingService>${shipService}</ShippingService>
-        <ShippingServiceCost>${Number(settings.shippingCost) || 0}</ShippingServiceCost>
-      </ShippingServiceOptions>
-    </ShippingDetails>
+    ${returnXml}
+    ${shippingXml}
     <Site>UK</Site>
   </Item>
 </AddFixedPriceItemRequest>`;
@@ -490,6 +515,54 @@ async function tradingCall(
     body: xml,
   });
   return res.text();
+}
+
+export type EbaySellerProfile = {
+  id: string;
+  type: "PAYMENT" | "SHIPPING" | "RETURN_POLICY" | string;
+  name: string;
+  summary: string;
+  isDefault: boolean;
+};
+
+export type EbaySellerProfiles = {
+  optedIn: boolean;
+  payment: EbaySellerProfile[];
+  shipping: EbaySellerProfile[];
+  returns: EbaySellerProfile[];
+};
+
+export async function listEbaySellerProfiles(token: string): Promise<EbaySellerProfiles> {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<GetUserPreferencesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_GB</ErrorLanguage>
+  <ShowSellerProfilePreferences>true</ShowSellerProfilePreferences>
+</GetUserPreferencesRequest>`;
+  const body = await tradingCall("GetUserPreferences", xml, token, "3");
+  const ack = xmlTag(body, "Ack");
+  const long = xmlTag(body, "LongMessage");
+  const short = xmlTag(body, "ShortMessage");
+  if (ack && ack !== "Success" && ack !== "Warning") {
+    throw new Error(decodeXml(long) || decodeXml(short) || "eBay would not return business policies.");
+  }
+  const optedIn = /<SellerProfileOptedIn>\s*true\s*<\/SellerProfileOptedIn>/i.test(body);
+  const payment: EbaySellerProfile[] = [];
+  const shipping: EbaySellerProfile[] = [];
+  const returns: EbaySellerProfile[] = [];
+  const blocks = body.split(/<SupportedSellerProfile>/i).slice(1);
+  for (const block of blocks) {
+    const id = xmlTag(block, "ProfileID")?.trim();
+    const type = (xmlTag(block, "ProfileType") ?? "").trim().toUpperCase();
+    const name = decodeXml(xmlTag(block, "ProfileName"))?.trim() ?? "";
+    const summary = decodeXml(xmlTag(block, "ShortSummary"))?.trim() ?? "";
+    const isDefault = /<IsDefault>\s*true\s*<\/IsDefault>/i.test(block);
+    if (!id) continue;
+    const row: EbaySellerProfile = { id, type, name: name || id, summary, isDefault };
+    if (type === "PAYMENT") payment.push(row);
+    else if (type === "SHIPPING") shipping.push(row);
+    else if (type === "RETURN_POLICY" || type === "RETURN") returns.push(row);
+  }
+  return { optedIn, payment, shipping, returns };
 }
 
 function parseEbayHit(body: string, host: string): EbaySkuHit | null {

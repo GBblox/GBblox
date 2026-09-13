@@ -161,6 +161,12 @@ export type SellerSettings = {
   locations?: string[];
   royalMailApiKey: string;
   royalMailSenderName: string;
+  ebayPaymentPolicyId?: string;
+  ebayPaymentPolicyName?: string;
+  ebayShippingPolicyId?: string;
+  ebayShippingPolicyName?: string;
+  ebayReturnPolicyId?: string;
+  ebayReturnPolicyName?: string;
 };
 
 export type SaleChannel = "ebay" | "bricklink";

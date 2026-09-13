@@ -11,7 +11,7 @@ import {
   matchBricklinkLot,
   testBricklinkCreds,
 } from "@/lib/bricklink-store";
-import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch } from "@/lib/ebay";
+import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch, listEbaySellerProfiles } from "@/lib/ebay";
 import {
   generateNotifyToken,
   loadEbayNotifyConfig,
@@ -221,6 +221,12 @@ const settingsSchema = z.object({
   handlingDays: z.string().optional().default("1"),
   royalMailApiKey: z.string().optional().default(""),
   royalMailSenderName: z.string().optional().default(""),
+  ebayPaymentPolicyId: z.string().optional().default(""),
+  ebayPaymentPolicyName: z.string().optional().default(""),
+  ebayShippingPolicyId: z.string().optional().default(""),
+  ebayShippingPolicyName: z.string().optional().default(""),
+  ebayReturnPolicyId: z.string().optional().default(""),
+  ebayReturnPolicyName: z.string().optional().default(""),
 });
 
 function envSettings(s?: z.infer<typeof settingsSchema>) {
@@ -1045,6 +1051,15 @@ export const testEbayToken = createServerFn({ method: "POST" }).middleware([auth
       throw new Error(long || "eBay token was rejected.");
     }
     return { ok: true as const, userId: user ?? "ok" };
+  });
+
+export const listEbayPolicies = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
+  .validator(z.object({ token: z.string().optional().default("") }))
+  .handler(async ({ data }) => {
+    const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
+    const token = settings.ebayUserToken;
+    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
+    return listEbaySellerProfiles(token);
   });
 
 export const getEbayNotifyConfig = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware]).handler(async () => {
