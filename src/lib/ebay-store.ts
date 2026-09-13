@@ -2,6 +2,12 @@ import type { LegoSet } from "./types";
 
 export type EbayStoreCategory = { id: string; name: string; parentId: string | null };
 
+export type StoreMapping = {
+  category: EbayStoreCategory | null;
+  subCategory: EbayStoreCategory | null;
+  subSubCategory: EbayStoreCategory | null;
+};
+
 export function parseEbayStoreCategories(body: string): EbayStoreCategory[] {
   const out: EbayStoreCategory[] = [];
   const stack: EbayStoreCategory[] = [];
@@ -23,6 +29,32 @@ export function parseEbayStoreCategories(body: string): EbayStoreCategory[] {
     }
   }
   return out;
+}
+
+export function storeChildren(cats: EbayStoreCategory[], parentId: string | null): EbayStoreCategory[] {
+  return cats.filter((c) => (c.parentId ?? null) === parentId);
+}
+
+export function storePath(cats: EbayStoreCategory[], id: string | null | undefined): EbayStoreCategory[] {
+  if (!id) return [];
+  const byId = new Map(cats.map((c) => [c.id, c]));
+  const path: EbayStoreCategory[] = [];
+  const seen = new Set<string>();
+  let cur = byId.get(id);
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    path.unshift(cur);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return path.slice(0, 3);
+}
+
+export function mappingFromPath(path: EbayStoreCategory[]): StoreMapping {
+  return {
+    category: path[0] ?? null,
+    subCategory: path[1] ?? null,
+    subSubCategory: path[2] ?? null,
+  };
 }
 
 function normCat(value: string): string {
@@ -58,7 +90,7 @@ function bestStoreCat(cats: EbayStoreCategory[], needles: string[]): EbayStoreCa
 export function pickStoreMapping(
   cats: EbayStoreCategory[],
   set: Pick<LegoSet, "category" | "subCategory" | "theme" | "itemType">,
-): { category: EbayStoreCategory | null; subCategory: EbayStoreCategory | null } {
+): StoreMapping {
   const themeNeedles = [
     set.category,
     set.theme,
@@ -66,33 +98,31 @@ export function pickStoreMapping(
     set.itemType === "minifig" ? "Minifigure" : "Set",
   ].filter((s): s is string => Boolean(s?.trim()));
   const subNeedles = [set.subCategory].filter((s): s is string => Boolean(s?.trim()));
-  const parents = cats.filter((c) => !c.parentId);
-  const kids = (id: string) => cats.filter((c) => c.parentId === id);
+  const roots = storeChildren(cats, null);
 
-  let category = bestStoreCat(parents, themeNeedles);
-  let subCategory = category && subNeedles.length ? bestStoreCat(kids(category.id), subNeedles) : null;
+  const subHit = subNeedles.length ? bestStoreCat(cats, subNeedles) : null;
+  if (subHit) {
+    const path = storePath(cats, subHit.id);
+    const l2 = path[1];
+    const l3 = l2 ? bestStoreCat(storeChildren(cats, l2.id), subNeedles) : null;
+    if (l3 && l3.id !== subHit.id && path.length < 3) {
+      return mappingFromPath([...path, l3].slice(0, 3));
+    }
+    return mappingFromPath(path);
+  }
 
-  if (!subCategory && subNeedles.length) {
-    const child = bestStoreCat(
-      cats.filter((c) => c.parentId),
-      subNeedles,
-    );
-    if (child) {
-      subCategory = child;
-      category = cats.find((c) => c.id === child.parentId) ?? category;
-    }
+  const themeHit = bestStoreCat(roots, themeNeedles) ?? bestStoreCat(cats, themeNeedles);
+  if (themeHit) {
+    const path = storePath(cats, themeHit.id);
+    const l1 = path[0] ?? themeHit;
+    const l2 = bestStoreCat(storeChildren(cats, l1.id), [...subNeedles, ...themeNeedles]);
+    const l3 = l2 ? bestStoreCat(storeChildren(cats, l2.id), subNeedles) : null;
+    return {
+      category: l1,
+      subCategory: l2,
+      subSubCategory: l3,
+    };
   }
-  if (!category) {
-    const any = bestStoreCat(cats, [...subNeedles, ...themeNeedles]);
-    if (any) {
-      if (any.parentId) {
-        category = cats.find((c) => c.id === any.parentId) ?? any;
-        subCategory = any;
-      } else {
-        category = any;
-      }
-    }
-  }
-  if (subCategory && category && subCategory.id === category.id) subCategory = null;
-  return { category, subCategory };
+
+  return { category: null, subCategory: null, subSubCategory: null };
 }

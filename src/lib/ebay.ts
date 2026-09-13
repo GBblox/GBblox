@@ -1,10 +1,10 @@
 import { clampTitle, conditionLabel, ebaySearchQuery, inclusionLabel, itemNumberDisplay, itemTypeLabel, marketplaceOf } from "./format";
 import { formatSku } from "./sku";
-import { parseEbayStoreCategories, pickStoreMapping, type EbayStoreCategory } from "./ebay-store";
+import { parseEbayStoreCategories, pickStoreMapping, storeChildren, type EbayStoreCategory } from "./ebay-store";
 import type { Condition, LegoSet, MarketplaceId, SaleOrder, SaleOrderDetail, SellerSettings } from "./types";
 
 export type { EbayStoreCategory };
-export { parseEbayStoreCategories, pickStoreMapping };
+export { parseEbayStoreCategories, pickStoreMapping, storeChildren };
 
 export type ListingDraft = {
   title: string;
@@ -18,6 +18,7 @@ export type ListingDraft = {
   prelistUrl: string;
   storeCategoryId?: string;
   storeCategory2Id?: string;
+  storeCategory3Id?: string;
 };
 
 export function listingDescriptionPlain(html: string): string {
@@ -39,6 +40,7 @@ export type EbayDraftPatch = {
   description?: string;
   storeCategoryId?: string;
   storeCategory2Id?: string;
+  storeCategory3Id?: string;
 };
 
 export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch): ListingDraft {
@@ -49,6 +51,7 @@ export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch):
   if (patch.categoryId?.trim()) next.categoryId = patch.categoryId.trim();
   if (patch.storeCategoryId !== undefined) next.storeCategoryId = patch.storeCategoryId.trim();
   if (patch.storeCategory2Id !== undefined) next.storeCategory2Id = patch.storeCategory2Id.trim();
+  if (patch.storeCategory3Id !== undefined) next.storeCategory3Id = patch.storeCategory3Id.trim();
   if (patch.description != null) {
     const paras = patch.description
       .split(/\n+/)
@@ -160,12 +163,14 @@ async function suggestEbayUkCategory(token: string, set: LegoSet): Promise<strin
 function storefrontXml(
   category: { id: string } | null,
   subCategory: { id: string } | null,
+  subSubCategory: { id: string } | null = null,
 ): string {
-  const primary = category?.id || subCategory?.id;
-  const secondary = category && subCategory ? subCategory.id : "";
+  const ids = [category?.id, subCategory?.id, subSubCategory?.id].filter((id): id is string => Boolean(id));
+  const primary = ids[0];
+  const secondary = ids.length > 1 ? ids[ids.length - 1] : "";
   if (!primary) return "";
   return `<Storefront><StoreCategoryID>${escapeXml(primary)}</StoreCategoryID>${
-    secondary ? `<StoreCategory2ID>${escapeXml(secondary)}</StoreCategory2ID>` : ""
+    secondary && secondary !== primary ? `<StoreCategory2ID>${escapeXml(secondary)}</StoreCategory2ID>` : ""
   }</Storefront>`;
 }
 
@@ -378,19 +383,25 @@ export async function publishToEbay(
 
   let storeCategory: EbayStoreCategory | null = null;
   let storeSubCategory: EbayStoreCategory | null = null;
-  if (draft.storeCategoryId || draft.storeCategory2Id) {
+  let storeSubSubCategory: EbayStoreCategory | null = null;
+  if (draft.storeCategoryId || draft.storeCategory2Id || draft.storeCategory3Id) {
     storeCategory = draft.storeCategoryId ? { id: draft.storeCategoryId, name: "", parentId: null } : null;
     storeSubCategory = draft.storeCategory2Id
       ? { id: draft.storeCategory2Id, name: "", parentId: draft.storeCategoryId ?? null }
+      : null;
+    storeSubSubCategory = draft.storeCategory3Id
+      ? { id: draft.storeCategory3Id, name: "", parentId: draft.storeCategory2Id ?? null }
       : null;
   } else {
     try {
       const mapped = pickStoreMapping(await listEbayStoreCategories(token), set);
       storeCategory = mapped.category;
       storeSubCategory = mapped.subCategory;
+      storeSubSubCategory = mapped.subSubCategory;
     } catch {
       storeCategory = null;
       storeSubCategory = null;
+      storeSubSubCategory = null;
     }
   }
   const categoryId = draft.categoryId?.trim() || (await suggestEbayUkCategory(token, set));
@@ -431,7 +442,7 @@ export async function publishToEbay(
     <Description><![CDATA[${draft.descriptionHtml}]]></Description>
     <PrimaryCategory><CategoryID>${escapeXml(categoryId)}</CategoryID></PrimaryCategory>
     ${itemSpecificsXml(set)}
-    ${storefrontXml(storeCategory, storeSubCategory)}
+    ${storefrontXml(storeCategory, storeSubCategory, storeSubSubCategory)}
     ${profilesXml}
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
     <CategoryMappingAllowed>true</CategoryMappingAllowed>

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { composeBricklinkListing } from "@/lib/bricklink-listing";
-import { composeListing, ebayPremiumAmount, listingDescriptionPlain, pickStoreMapping, type EbayStoreCategory } from "@/lib/ebay";
+import { composeListing, ebayPremiumAmount, listingDescriptionPlain, pickStoreMapping, storeChildren, type EbayStoreCategory } from "@/lib/ebay";
 import { formatMoney, itemNumberDisplay, itemTypeLabel } from "@/lib/format";
 import { getEbayStoreCategories, listOnBricklink, listOnEbay } from "@/lib/server/sets";
 import { useMarketplaceApis } from "@/lib/marketplace-apis";
@@ -33,6 +33,7 @@ type EbayRow = {
   description: string;
   storeCategoryId: string;
   storeCategory2Id: string;
+  storeCategory3Id: string;
 };
 
 type BlRow = {
@@ -42,7 +43,9 @@ type BlRow = {
 
 function ebayRowOf(lot: LegoSet, cats: EbayStoreCategory[] = [], premium = 0): EbayRow {
   const draft = composeListing(lot, "EBAY_GB", premium);
-  const mapped = cats.length ? pickStoreMapping(cats, lot) : { category: null, subCategory: null };
+  const mapped = cats.length
+    ? pickStoreMapping(cats, lot)
+    : { category: null, subCategory: null, subSubCategory: null };
   return {
     title: draft.title,
     price: draft.price != null ? String(draft.price) : "",
@@ -51,6 +54,7 @@ function ebayRowOf(lot: LegoSet, cats: EbayStoreCategory[] = [], premium = 0): E
     description: listingDescriptionPlain(draft.descriptionHtml),
     storeCategoryId: mapped.category?.id ?? "",
     storeCategory2Id: mapped.subCategory?.id ?? "",
+    storeCategory3Id: mapped.subSubCategory?.id ?? "",
   };
 }
 
@@ -159,11 +163,12 @@ export function ListingsPanel({
         const lot = selectedLots.find((item) => item.id === Number(key));
         if (!lot) continue;
         const mapped = pickStoreMapping(storeTree, lot);
-        if (!mapped.category && !mapped.subCategory) continue;
+        if (!mapped.category && !mapped.subCategory && !mapped.subSubCategory) continue;
         next[Number(key)] = {
           ...row,
           storeCategoryId: mapped.category?.id ?? "",
           storeCategory2Id: mapped.subCategory?.id ?? "",
+          storeCategory3Id: mapped.subSubCategory?.id ?? "",
         };
         changed = true;
       }
@@ -193,6 +198,7 @@ export function ListingsPanel({
                   description: row?.description,
                   storeCategoryId: row?.storeCategoryId,
                   storeCategory2Id: row?.storeCategory2Id,
+                  storeCategory3Id: row?.storeCategory3Id,
                 },
               },
             });
@@ -269,7 +275,8 @@ export function ListingsPanel({
                       <th className="px-3 py-2 font-medium">Qty</th>
                       <th className="px-3 py-2 font-medium">eBay cat</th>
                       <th className="px-3 py-2 font-medium">Store category</th>
-                      <th className="px-3 py-2 font-medium">Store subcat</th>
+                      <th className="px-3 py-2 font-medium">Subcategory</th>
+                      <th className="px-3 py-2 font-medium">Sub-subcategory</th>
                       <th className="px-3 py-2 font-medium">Description</th>
                     </>
                   ) : (
@@ -365,16 +372,13 @@ export function ListingsPanel({
                                   [lot.id]: {
                                     ...ebay,
                                     storeCategoryId: id === STORE_NONE ? "" : id,
-                                    storeCategory2Id:
-                                      id !== STORE_NONE &&
-                                      storeTree.some((c) => c.id === ebay.storeCategory2Id && c.parentId === id)
-                                        ? ebay.storeCategory2Id
-                                        : "",
+                                    storeCategory2Id: "",
+                                    storeCategory3Id: "",
                                   },
                                 }))
                               }
                             >
-                              <SelectTrigger className="min-w-44">
+                              <SelectTrigger className="min-w-40">
                                 <SelectValue placeholder={storeCats.isPending ? "Loading…" : "None"} />
                               </SelectTrigger>
                               <SelectContent>
@@ -393,23 +397,49 @@ export function ListingsPanel({
                               onValueChange={(id) =>
                                 setEbayRows((prev) => ({
                                   ...prev,
-                                  [lot.id]: { ...ebay, storeCategory2Id: id === STORE_NONE ? "" : id },
+                                  [lot.id]: {
+                                    ...ebay,
+                                    storeCategory2Id: id === STORE_NONE ? "" : id,
+                                    storeCategory3Id: "",
+                                  },
                                 }))
                               }
                               disabled={!ebay.storeCategoryId}
                             >
-                              <SelectTrigger className="min-w-44">
+                              <SelectTrigger className="min-w-40">
                                 <SelectValue placeholder="None" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value={STORE_NONE}>None</SelectItem>
-                                {storeTree
-                                  .filter((c) => c.parentId === ebay.storeCategoryId)
-                                  .map((c) => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                      {c.name}
-                                    </SelectItem>
-                                  ))}
+                                {storeChildren(storeTree, ebay.storeCategoryId || null).map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select
+                              value={ebay.storeCategory3Id || STORE_NONE}
+                              onValueChange={(id) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, storeCategory3Id: id === STORE_NONE ? "" : id },
+                                }))
+                              }
+                              disabled={!ebay.storeCategory2Id}
+                            >
+                              <SelectTrigger className="min-w-40">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={STORE_NONE}>None</SelectItem>
+                                {storeChildren(storeTree, ebay.storeCategory2Id || null).map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </td>

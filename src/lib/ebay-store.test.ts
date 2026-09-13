@@ -10,6 +10,10 @@ const xml = `
     <ChildCategory>
       <CategoryID>11</CategoryID>
       <Name>Rise of the Snakes</Name>
+      <ChildCategory>
+        <CategoryID>111</CategoryID>
+        <Name>Spinners</Name>
+      </ChildCategory>
     </ChildCategory>
     <ChildCategory>
       <CategoryID>12</CategoryID>
@@ -40,6 +44,9 @@ describe("parseEbayStoreCategories", () => {
     assert.equal(ninjago?.parentId, null);
     assert.equal(snakes?.id, "11");
     assert.equal(snakes?.parentId, "10");
+    const spinners = cats.find((c) => c.name === "Spinners");
+    assert.equal(spinners?.id, "111");
+    assert.equal(spinners?.parentId, "11");
   });
 });
 
@@ -55,6 +62,7 @@ describe("pickStoreMapping", () => {
     });
     assert.equal(mapped.category?.name, "NINJAGO");
     assert.equal(mapped.subCategory?.name, "Rise of the Snakes");
+    assert.equal(mapped.subSubCategory, null);
   });
 
   it("maps a Ninjago minifig to the same store path", () => {
@@ -66,5 +74,18 @@ describe("pickStoreMapping", () => {
     });
     assert.equal(mapped.category?.name, "NINJAGO");
     assert.equal(mapped.subCategory?.name, "Rise of the Snakes");
+    assert.equal(mapped.subSubCategory, null);
+  });
+
+  it("maps a spinner leaf as the third store level", () => {
+    const mapped = pickStoreMapping(cats, {
+      itemType: "set",
+      category: "Ninjago",
+      subCategory: "Spinners",
+      theme: "Ninjago",
+    });
+    assert.equal(mapped.category?.name, "NINJAGO");
+    assert.equal(mapped.subCategory?.name, "Rise of the Snakes");
+    assert.equal(mapped.subSubCategory?.name, "Spinners");
   });
 });

@@ -858,6 +858,7 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
           description: z.string().optional(),
           storeCategoryId: z.string().optional(),
           storeCategory2Id: z.string().optional(),
+          storeCategory3Id: z.string().optional(),
         })
         .optional(),
     }),
