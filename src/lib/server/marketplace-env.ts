@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { ownerMiddleware } from "@/lib/owner-middleware";
-import { env } from "@/lib/env.server";
+
+function env(key: string): string {
+  if (typeof process === "undefined" || !process.env) return "";
+  return process.env[key]?.trim() || "";
+}
 
 function first(...keys: string[]): string {
   for (const key of keys) {
