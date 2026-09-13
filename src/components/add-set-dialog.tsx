@@ -316,7 +316,7 @@ export function AddSetDialog({
           {picked && (
             <>
               <div className="grid grid-cols-2 gap-3 rounded-md bg-surface-2 p-3">
-                <div className="col-span-2 space-y-2 sm:col-span-1">
+                <div className="col-span-2 min-w-0 space-y-2 sm:col-span-1">
                   <Label htmlFor="sku">SKU</Label>
                   <Input
                     id="sku"
@@ -328,7 +328,7 @@ export function AddSetDialog({
                     Auto GBB-SET-0001. eBay custom label and BrickLink Remarks.
                   </p>
                 </div>
-                <div className="col-span-2 space-y-2 sm:col-span-1">
+                <div className="col-span-2 min-w-0 space-y-2 sm:col-span-1">
                   <Label htmlFor="location">Location</Label>
                   <LocationSelect id="location" value={location} onChange={setLocation} itemType={picked.itemType} />
                   <p className="text-xs text-subtle">

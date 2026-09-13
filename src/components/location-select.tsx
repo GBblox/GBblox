@@ -31,7 +31,7 @@ export function LocationSelect({
       onValueChange={(v) => onChange(v === NONE ? "" : v)}
       disabled={disabled}
     >
-      <SelectTrigger id={id} className={cn("font-mono", className)} data-readonly={disabled || undefined}>
+      <SelectTrigger id={id} className={cn("min-w-0 font-mono", className)} data-readonly={disabled || undefined}>
         <SelectValue placeholder="No location" />
       </SelectTrigger>
       <SelectContent>

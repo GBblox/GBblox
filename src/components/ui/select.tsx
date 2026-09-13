@@ -14,16 +14,17 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "flex h-10 w-full items-center justify-between gap-2 rounded-md bg-surface px-3 text-sm text-fg shadow-[var(--shadow-border)]",
+        "flex h-10 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-md bg-surface px-3 text-sm text-fg shadow-[var(--shadow-border)]",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 disabled:opacity-50",
         "data-[readonly]:cursor-default data-[readonly]:opacity-100 [&[data-readonly]_svg]:hidden",
+        "[&>span]:min-w-0 [&>span]:flex-1 [&>span]:truncate",
         className,
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 text-muted" />
+        <ChevronDown className="size-4 shrink-0 text-muted" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -39,7 +40,7 @@ export function SelectContent({
       <SelectPrimitive.Content
         position="popper"
         className={cn(
-          "relative z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md bg-popover shadow-[var(--shadow-border)]",
+          "relative z-50 max-h-72 w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md bg-popover shadow-[var(--shadow-border)]",
           className,
         )}
         {...props}
@@ -78,11 +79,14 @@ export function SelectItem({
     <SelectPrimitive.Item
       className={cn(
         "relative flex cursor-pointer items-center rounded-sm py-2 pr-8 pl-2 text-sm outline-none select-none focus:bg-surface-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "min-w-0 whitespace-normal break-words",
         className,
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemText>
+        <span className="block min-w-0 break-words">{children}</span>
+      </SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator className="absolute right-2">
         <Check className="size-3.5" />
       </SelectPrimitive.ItemIndicator>
