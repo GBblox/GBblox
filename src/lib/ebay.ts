@@ -110,6 +110,38 @@ function pickStoreCategory(cats: StoreCat[], set: LegoSet): StoreCat | null {
   );
 }
 
+function ebayUkCategoryId(set: Pick<LegoSet, "itemType" | "condition">): string {
+  if (set.itemType === "minifig") return "19001";
+  if (set.condition === "used_parts") return "117378";
+  return "19006";
+}
+
+async function suggestEbayUkCategory(token: string, set: LegoSet): Promise<string> {
+  const fallback = ebayUkCategoryId(set);
+  const num = itemNumberDisplay(set.setNum, set.itemType);
+  const query =
+    set.itemType === "minifig"
+      ? `LEGO Minifigure ${num} ${set.name}`.trim()
+      : set.condition === "used_parts"
+        ? `LEGO bricks pieces parts ${num} ${set.name}`.trim()
+        : `LEGO Complete Set ${num} ${set.name}`.trim();
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<GetSuggestedCategoriesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_GB</ErrorLanguage>
+  <Query>${escapeXml(query.slice(0, 350))}</Query>
+</GetSuggestedCategoriesRequest>`;
+  try {
+    const body = await tradingCall("GetSuggestedCategories", xml, token, "3");
+    const first = body.split(/<SuggestedCategory>/i)[1];
+    if (!first) return fallback;
+    const ids = [...first.matchAll(/<CategoryID>(\d+)<\/CategoryID>/gi)].map((m) => m[1]);
+    const ukLeaves = new Set(["19006", "19001", "117378"]);
+    return ids.find((id) => ukLeaves.has(id)) ?? ids.at(-1) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function storefrontXml(cat: StoreCat | null): string {
   if (!cat) return "";
   return `<Storefront><StoreCategoryID>${escapeXml(cat.id)}</StoreCategoryID></Storefront>`;
@@ -219,7 +251,7 @@ export function composeListing(set: LegoSet, marketplace: MarketplaceId): Listin
     price: set.askingPrice,
     quantity: set.qty,
     conditionId: conditionId(set.condition),
-    categoryId: set.itemType === "minifig" ? "19007" : "19006",
+    categoryId: ebayUkCategoryId(set),
     pictureUrl: set.imageUrl,
     sku: set.sku || formatSku(set.setNum, set.itemType, set.id),
     prelistUrl: `${host}/sl/prelist/suggest?_nkw=${q}`,
@@ -308,6 +340,7 @@ export async function publishToEbay(
   } catch {
     storeCat = null;
   }
+  const categoryId = await suggestEbayUkCategory(token, set);
 
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -316,7 +349,7 @@ export async function publishToEbay(
   <Item>
     <Title>${escapeXml(draft.title)}</Title>
     <Description><![CDATA[${draft.descriptionHtml}]]></Description>
-    <PrimaryCategory><CategoryID>${draft.categoryId}</CategoryID></PrimaryCategory>
+    <PrimaryCategory><CategoryID>${escapeXml(categoryId)}</CategoryID></PrimaryCategory>
     ${itemSpecificsXml(set)}
     ${storefrontXml(storeCat)}
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
