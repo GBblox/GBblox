@@ -116,3 +116,28 @@ export function parseEbayOrderDetail(body: string, marketplace: MarketplaceId): 
     postage: null,
   };
 }
+
+export function completeSaleXml(orderId: string, trackingNumber: string): string {
+  const id = escapeComplete(orderId.trim());
+  const track = escapeComplete(trackingNumber.trim());
+  return `<?xml version="1.0" encoding="utf-8"?>
+<CompleteSaleRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ErrorLanguage>en_GB</ErrorLanguage>
+  <OrderID>${id}</OrderID>
+  <Shipped>true</Shipped>
+  <Shipment>
+    <ShipmentTrackingDetails>
+      <ShippingCarrierUsed>Royal Mail</ShippingCarrierUsed>
+      <ShipmentTrackingNumber>${track}</ShipmentTrackingNumber>
+    </ShipmentTrackingDetails>
+  </Shipment>
+</CompleteSaleRequest>`;
+}
+
+function escapeComplete(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}

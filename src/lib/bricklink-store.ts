@@ -474,3 +474,40 @@ export async function fetchBricklinkOrder(creds: BricklinkCreds, orderId: string
     postage: null,
   };
 }
+
+export function bricklinkTrackingPayload(trackingNumber: string): {
+  shipping: { date_shipped: string; tracking_no: string; tracking_link: string };
+} {
+  const no = trackingNumber.trim();
+  return {
+    shipping: {
+      date_shipped: new Date().toISOString(),
+      tracking_no: no,
+      tracking_link: `https://www.royalmail.com/track-your-item#/tracking-results/${encodeURIComponent(no)}`,
+    },
+  };
+}
+
+/** Save Royal Mail tracking on a BrickLink order and mark it shipped. */
+export async function markBricklinkOrderShipped(
+  creds: BricklinkCreds,
+  orderId: string,
+  trackingNumber: string,
+): Promise<void> {
+  const id = encodeURIComponent(orderId.trim());
+  const track = trackingNumber.trim();
+  if (!id || !track) return;
+  await blFetch("PUT", `/orders/${id}`, creds, bricklinkTrackingPayload(track));
+  try {
+    await blFetch("PUT", `/orders/${id}/status`, creds, { field: "status", value: "SHIPPED" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (/already|invalid status|cannot change/i.test(msg)) return;
+    try {
+      await blFetch("PUT", `/orders/${id}/status`, creds, { field: "status", value: "PACKED" });
+      await blFetch("PUT", `/orders/${id}/status`, creds, { field: "status", value: "SHIPPED" });
+    } catch {
+      if (msg) throw err;
+    }
+  }
+}

@@ -13,6 +13,13 @@ import { useMarketplaceApis } from "@/lib/marketplace-apis";
 import { credentialsOf, useSettings } from "@/lib/settings";
 import type { SaleOrderDetail } from "@/lib/types";
 
+function toastPostage(row: SaleOrderDetail, fallback: string) {
+  const note = row.postage?.marketplaceNote;
+  if (note?.startsWith("Tracking")) toast.success(note);
+  else if (note) toast.error(note);
+  else toast.success(fallback);
+}
+
 export function PostageCard({
   detail,
   onUpdated,
@@ -43,7 +50,8 @@ export function PostageCard({
     onSuccess: (row) => {
       onUpdated(row);
       setConfirm(false);
-      toast.success(
+      toastPostage(
+        row,
         row.postage?.trackingNumber
           ? `Click & Drop #${row.postage.orderIdentifier} · ${row.postage.trackingNumber}`
           : `Click & Drop #${row.postage?.orderIdentifier} — look under New orders`,
@@ -63,7 +71,7 @@ export function PostageCard({
       }),
     onSuccess: (row) => {
       onUpdated(row);
-      toast.success(row.postage?.trackingNumber ? `Tracking ${row.postage.trackingNumber}` : "No tracking yet");
+      toastPostage(row, row.postage?.trackingNumber ? `Tracking ${row.postage.trackingNumber}` : "No tracking yet");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not refresh Click & Drop"),
   });
@@ -101,6 +109,7 @@ export function PostageCard({
           <p className="font-mono text-xs text-subtle">
             Click & Drop #{postage.orderIdentifier} · search {`BS-${detail.channel}-${detail.id}`}
           </p>
+          {postage.marketplaceNote ? <p className="text-xs text-muted">{postage.marketplaceNote}</p> : null}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" asChild>
               <a href={CLICK_AND_DROP_APP} target="_blank" rel="noreferrer">

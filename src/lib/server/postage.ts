@@ -3,6 +3,9 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { ownerMiddleware } from "@/lib/owner-middleware";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
+import { bricklinkCredsFrom, markBricklinkOrderShipped } from "@/lib/bricklink-store";
+import { markEbayOrderShipped } from "@/lib/ebay";
+import { marketplaceOf } from "@/lib/format";
 import { createRoyalMailLabel, fetchRoyalMailOrder, testRoyalMail } from "@/lib/royal-mail";
 import type { PostageLabel, SaleOrderDetail } from "@/lib/types";
 import { loadStoredSale } from "./orders";
@@ -30,15 +33,72 @@ async function saleForPostage(channel: "ebay" | "bricklink", id: string): Promis
 
 async function savePostage(channel: string, id: string, postage: PostageLabel): Promise<void> {
   const sql = await getSql();
+  const shipped = postage.trackingNumber ? new Date().toISOString() : null;
   await sql`
     update sales
     set rm_order_id = ${postage.orderIdentifier},
         rm_tracking = ${postage.trackingNumber},
         rm_service = ${postage.serviceCode},
         rm_label_pdf = ${postage.labelPdf},
-        rm_label_at = now()
+        rm_label_at = now(),
+        shipped_at = coalesce(${shipped}, shipped_at)
     where channel = ${channel} and remote_id = ${id}
   `;
+}
+
+async function pushTrackingToMarketplace(
+  detail: SaleOrderDetail,
+  tracking: string,
+  creds: {
+    ebayUserToken: string;
+    marketplace: "EBAY_US" | "EBAY_GB" | "EBAY_AU" | "EBAY_CA" | "EBAY_DE";
+    blConsumerKey: string;
+    blConsumerSecret: string;
+    blToken: string;
+    blTokenSecret: string;
+  },
+): Promise<string | null> {
+  const track = tracking.trim();
+  if (!track) return null;
+  if (detail.channel === "ebay") {
+    await markEbayOrderShipped(creds.ebayUserToken, marketplaceOf(creds.marketplace).siteId, detail.id, track);
+    return `Tracking ${track} sent to eBay`;
+  }
+  const bl = bricklinkCredsFrom(creds);
+  if (!bl) throw new Error("BrickLink API keys missing — tracking was not sent.");
+  await markBricklinkOrderShipped(bl, detail.id, track);
+  return `Tracking ${track} sent to BrickLink`;
+}
+
+async function withMarketplaceTracking(
+  detail: SaleOrderDetail,
+  postage: PostageLabel,
+  creds: Parameters<typeof pushTrackingToMarketplace>[2],
+): Promise<SaleOrderDetail> {
+  const track = postage.trackingNumber?.trim() || "";
+  if (!track) {
+    return {
+      ...detail,
+      postage: {
+        ...postage,
+        marketplaceNote: "No tracking yet — refresh after you print in Click & Drop.",
+      },
+    };
+  }
+  try {
+    const note = await pushTrackingToMarketplace(detail, track, creds);
+    return {
+      ...detail,
+      shippedAt: detail.shippedAt || new Date().toISOString(),
+      postage: { ...postage, marketplaceNote: note },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Could not send tracking to the marketplace.";
+    return {
+      ...detail,
+      postage: { ...postage, marketplaceNote: msg },
+    };
+  }
 }
 
 export const testRoyalMailKey = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
@@ -78,7 +138,7 @@ export const createPostage = createServerFn({ method: "POST" }).middleware([auth
       createdAt: new Date().toISOString(),
     };
     await savePostage(detail.channel, detail.id, postage);
-    return { ...detail, postage };
+    return withMarketplaceTracking(detail, postage, creds);
   });
 
 export const reprintPostage = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
@@ -104,5 +164,5 @@ export const reprintPostage = createServerFn({ method: "POST" }).middleware([aut
       createdAt: detail.postage?.createdAt || new Date().toISOString(),
     };
     await savePostage(detail.channel, detail.id, postage);
-    return { ...detail, postage };
+    return withMarketplaceTracking(detail, postage, creds);
   });

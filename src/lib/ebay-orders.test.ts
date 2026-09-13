@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseEbayOrderDetail, parseEbayOrdersXml } from "./ebay-orders.ts";
+import { completeSaleXml, parseEbayOrderDetail, parseEbayOrdersXml } from "./ebay-orders.ts";
 
 describe("parseEbayOrdersXml", () => {
   it("reads seller orders, money and SKU lines", () => {

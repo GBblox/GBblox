@@ -2,6 +2,7 @@ import { clampTitle, conditionLabel, ebaySearchQuery, inclusionLabel, itemNumber
 import { formatSku } from "./sku";
 import { parseEbayStoreCategories, pickStoreMapping, storeChildren, type EbayStoreCategory } from "./ebay-store";
 import { ebayAuthFrom, isEbayAuthError, resolveEbayIafToken, type EbayUserAuth } from "./ebay-auth";
+import { completeSaleXml } from "./ebay-orders";
 import type { Condition, LegoSet, MarketplaceId, SaleOrder, SaleOrderDetail, SellerSettings } from "./types";
 
 export type { EbayStoreCategory };
@@ -796,5 +797,23 @@ export async function fetchEbayOrder(
     throw new Error(long || "eBay could not load that order.");
   }
   return parseEbayOrderDetail(body, marketplace);
+}
+
+/** Mark an eBay order shipped and attach Royal Mail tracking. */
+export async function markEbayOrderShipped(
+  token: string,
+  siteId: string,
+  orderId: string,
+  trackingNumber: string,
+): Promise<void> {
+  const track = trackingNumber.trim();
+  const id = orderId.trim();
+  if (!track || !id) return;
+  const body = await tradingCall("CompleteSale", completeSaleXml(id, track), token, siteId);
+  const ack = xmlTag(body, "Ack");
+  if (ack === "Success" || ack === "Warning") return;
+  const long = decodeXml(xmlTag(body, "LongMessage")) ?? decodeXml(xmlTag(body, "ShortMessage")) ?? "";
+  if (/already been shipped|already shipped/i.test(long)) return;
+  throw new Error(long || "eBay could not save the tracking number.");
 }
 

@@ -229,6 +229,7 @@ export type PostageLabel = {
   serviceCode: string;
   labelPdf: string | null;
   createdAt: string | null;
+  marketplaceNote?: string | null;
 };
 
 export const BATCH_PLATFORMS = [
