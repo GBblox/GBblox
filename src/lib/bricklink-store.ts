@@ -149,8 +149,13 @@ export async function findBricklinkBySku(creds: BricklinkCreds, sku: string): Pr
   return matchBricklinkLot(lots, sku);
 }
 
-export async function createBricklinkLot(creds: BricklinkCreds, set: LegoSet): Promise<BricklinkLot> {
-  if (set.askingPrice == null || set.askingPrice <= 0) {
+export async function createBricklinkLot(
+  creds: BricklinkCreds,
+  set: LegoSet,
+  patch?: { unitPrice?: number; description?: string },
+): Promise<BricklinkLot> {
+  const price = patch?.unitPrice ?? set.askingPrice;
+  if (price == null || price <= 0) {
     throw new Error("Set a price before listing on BrickLink.");
   }
   const type = bricklinkItemType(set.itemType);
@@ -159,11 +164,11 @@ export async function createBricklinkLot(creds: BricklinkCreds, set: LegoSet): P
     item: { no, type },
     color_id: 0,
     quantity: Math.max(1, set.qty),
-    unit_price: set.askingPrice.toFixed(3),
+    unit_price: price.toFixed(3),
     new_or_used: conditionCode(set.condition),
     completeness: set.itemType === "minifig" ? undefined : completenessOf(set),
     remarks: set.sku,
-    description: bricklinkListingDescription(set),
+    description: (patch?.description?.trim() || bricklinkListingDescription(set)).slice(0, 2000),
     is_retain: false,
     is_stock_room: false,
   });

@@ -1,10 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Store } from "lucide-react";
+import { ChevronLeft, Loader2, Store } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { composeBricklinkListing } from "@/lib/bricklink-listing";
+import { composeListing, listingDescriptionPlain } from "@/lib/ebay";
 import { formatMoney, itemNumberDisplay, itemTypeLabel } from "@/lib/format";
 import { listOnBricklink, listOnEbay } from "@/lib/server/sets";
 import { useMarketplaceApis } from "@/lib/marketplace-apis";
@@ -16,6 +20,38 @@ function listable(lot: LegoSet) {
   if (lot.status === "incomplete") return false;
   if (lot.condition === "used_incomplete" || lot.condition === "used_parts") return false;
   return lot.itemType === "set" || lot.itemType === "minifig";
+}
+
+type EbayRow = {
+  title: string;
+  price: string;
+  quantity: string;
+  categoryId: string;
+  description: string;
+};
+
+type BlRow = {
+  description: string;
+  price: string;
+};
+
+function ebayRowOf(lot: LegoSet): EbayRow {
+  const draft = composeListing(lot, "EBAY_GB");
+  return {
+    title: draft.title,
+    price: draft.price != null ? String(draft.price) : "",
+    quantity: String(draft.quantity),
+    categoryId: draft.categoryId,
+    description: listingDescriptionPlain(draft.descriptionHtml),
+  };
+}
+
+function blRowOf(lot: LegoSet): BlRow {
+  const draft = composeBricklinkListing(lot);
+  return {
+    description: draft.description,
+    price: draft.unitPrice != null ? String(draft.unitPrice) : "",
+  };
 }
 
 export function ListingsPanel({
@@ -30,6 +66,9 @@ export function ListingsPanel({
   const qc = useQueryClient();
   const [channel, setChannel] = useState<"ebay" | "bricklink">("ebay");
   const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [confirm, setConfirm] = useState<"ebay" | "bricklink" | null>(null);
+  const [ebayRows, setEbayRows] = useState<Record<number, EbayRow>>({});
+  const [blRows, setBlRows] = useState<Record<number, BlRow>>({});
 
   const rows = useMemo(() => {
     return lots.filter((lot) => {
@@ -50,6 +89,9 @@ export function ListingsPanel({
   );
 
   const selectedLots = rows.filter((lot) => picked.has(lot.id));
+  const confirmLots = selectedLots.filter((lot) =>
+    confirm === "ebay" ? ebayRows[lot.id] : confirm === "bricklink" ? blRows[lot.id] : false,
+  );
   const allOn = rows.length > 0 && rows.every((lot) => picked.has(lot.id));
 
   function toggle(id: number) {
@@ -70,26 +112,62 @@ export function ListingsPanel({
     if (channel === "ebay") return;
     setChannel("ebay");
     setPicked(new Set());
+    setConfirm(null);
   }
 
   function toggleBricklink() {
     if (channel === "bricklink") return;
     setChannel("bricklink");
     setPicked(new Set());
+    setConfirm(null);
+  }
+
+  function openConfirm(next: "ebay" | "bricklink") {
+    if (next === "ebay") {
+      setEbayRows(Object.fromEntries(selectedLots.map((lot) => [lot.id, ebayRowOf(lot)])));
+    } else {
+      setBlRows(Object.fromEntries(selectedLots.map((lot) => [lot.id, blRowOf(lot)])));
+    }
+    setConfirm(next);
   }
 
   const bulk = useMutation({
-    mutationFn: async (channel: "ebay" | "bricklink") => {
+    mutationFn: async (target: "ebay" | "bricklink") => {
       const creds = credentialsOf(settings);
       const results: { ok: number; fail: number } = { ok: 0, fail: 0 };
-      for (const lot of selectedLots) {
+      for (const lot of confirmLots) {
         try {
-          if (channel === "ebay") {
+          if (target === "ebay") {
             if (lot.ebayListed) continue;
-            await listOnEbay({ data: { id: lot.id, settings: creds } });
+            const row = ebayRows[lot.id];
+            const price = Number(row?.price);
+            await listOnEbay({
+              data: {
+                id: lot.id,
+                settings: creds,
+                patch: {
+                  title: row?.title,
+                  price: Number.isFinite(price) ? price : null,
+                  quantity: Math.max(1, Number(row?.quantity) || 1),
+                  categoryId: row?.categoryId,
+                  description: row?.description,
+                },
+              },
+            });
           } else {
             if (lot.blListed) continue;
-            await listOnBricklink({ data: { id: lot.id, settings: creds } });
+            const row = blRows[lot.id];
+            const price = Number(row?.price);
+            await listOnBricklink({
+              data: {
+                id: lot.id,
+                settings: creds,
+                patch: {
+                  unitPrice: Number.isFinite(price) ? price : undefined,
+                  description: row?.description,
+                },
+              },
+            });
           }
           results.ok += 1;
         } catch (err) {
@@ -101,14 +179,200 @@ export function ListingsPanel({
       }
       return results;
     },
-    onSuccess: (res, channel) => {
+    onSuccess: (res, target) => {
       qc.invalidateQueries({ queryKey: ["sets"] });
       setPicked(new Set());
-      const name = channel === "ebay" ? "eBay" : "BrickLink";
+      setConfirm(null);
+      const name = target === "ebay" ? "eBay" : "BrickLink";
       if (res.ok) toast.success(`Listed ${res.ok} on ${name}${res.fail ? ` · ${res.fail} failed` : ""}`);
       else if (res.fail) toast.error(`Nothing listed on ${name}`);
     },
   });
+
+  if (confirm) {
+    const name = confirm === "ebay" ? "eBay" : "BrickLink";
+    return (
+      <section className="space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-[26px] leading-[1.15] font-extrabold tracking-tight text-navy">
+              Confirm {name} listings
+            </h1>
+            <p className="mt-2 text-[16px] leading-snug text-fg">
+              Edit fields, then confirm to list {confirmLots.length} item{confirmLots.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setConfirm(null)}>
+            <ChevronLeft />
+            Back
+          </Button>
+        </div>
+
+        <div className="overflow-hidden rounded-md bg-surface shadow-[var(--shadow-border)]">
+          <div className="max-h-[min(70dvh,720px)] overflow-auto">
+            <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr className="bg-surface-2 text-left text-xs text-muted">
+                  <th className="sticky left-0 z-20 bg-surface-2 px-3 py-2 font-medium"> </th>
+                  {confirm === "ebay" ? (
+                    <>
+                      <th className="px-3 py-2 font-medium">Title</th>
+                      <th className="px-3 py-2 font-medium">Price</th>
+                      <th className="px-3 py-2 font-medium">Qty</th>
+                      <th className="px-3 py-2 font-medium">Category</th>
+                      <th className="px-3 py-2 font-medium">Description</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-3 py-2 font-medium">Item</th>
+                      <th className="px-3 py-2 font-medium">Price</th>
+                      <th className="px-3 py-2 font-medium">Description</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {confirmLots.map((lot) => {
+                  const ebay = ebayRows[lot.id];
+                  const bl = blRows[lot.id];
+                  return (
+                    <tr key={lot.id} className="align-top border-b border-border">
+                      <td className="sticky left-0 z-10 bg-surface px-3 py-2">
+                        <span className="flex size-12 items-center overflow-hidden rounded-sm bg-white">
+                          {lot.imageUrl ? (
+                            <img src={lot.imageUrl} alt="" className="size-full object-contain" />
+                          ) : null}
+                        </span>
+                      </td>
+                      {confirm === "ebay" && ebay ? (
+                        <>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={ebay.title}
+                              maxLength={80}
+                              className="min-w-72"
+                              onChange={(e) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, title: e.target.value },
+                                }))
+                              }
+                            />
+                            <p className="mt-1 text-[11px] text-subtle">{ebay.title.length}/80</p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              className="w-24"
+                              value={ebay.price}
+                              onChange={(e) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, price: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              min={1}
+                              className="w-16"
+                              value={ebay.quantity}
+                              onChange={(e) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, quantity: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              className="w-24 font-mono"
+                              value={ebay.categoryId}
+                              onChange={(e) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, categoryId: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Textarea
+                              className="min-h-20 min-w-80"
+                              value={ebay.description}
+                              onChange={(e) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, description: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                        </>
+                      ) : bl ? (
+                        <>
+                          <td className="px-3 py-2">
+                            <p className="min-w-48 font-semibold">{lot.name}</p>
+                            <p className="font-mono text-[11px] text-subtle">
+                              {itemNumberDisplay(lot.setNum, lot.itemType)} · {lot.sku}
+                            </p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              className="w-24"
+                              value={bl.price}
+                              onChange={(e) =>
+                                setBlRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...bl, price: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Textarea
+                              className="min-h-20 min-w-80"
+                              value={bl.description}
+                              onChange={(e) =>
+                                setBlRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...bl, description: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="sticky bottom-0 flex gap-2 border-t border-border bg-surface p-3">
+            <Button type="button" variant="secondary" className="flex-1" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={!confirmLots.length || bulk.isPending}
+              onClick={() => bulk.mutate(confirm)}
+            >
+              {bulk.isPending ? <Loader2 className="animate-spin" /> : <Store />}
+              Confirm · list {confirmLots.length} on {name}
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -146,10 +410,10 @@ export function ListingsPanel({
           type="button"
           size="sm"
           className="w-full"
-          disabled={!selectedLots.length || bulk.isPending || !apis.ebayPublish}
-          onClick={() => bulk.mutate("ebay")}
+          disabled={!selectedLots.length || !apis.ebayPublish}
+          onClick={() => openConfirm("ebay")}
         >
-          {bulk.isPending && bulk.variables === "ebay" ? <Loader2 className="animate-spin" /> : <Store />}
+          <Store />
           List {selectedLots.length || ""} on eBay
         </Button>
       ) : (
@@ -158,10 +422,10 @@ export function ListingsPanel({
           size="sm"
           variant="secondary"
           className="w-full"
-          disabled={!selectedLots.length || bulk.isPending || !apis.bricklink}
-          onClick={() => bulk.mutate("bricklink")}
+          disabled={!selectedLots.length || !apis.bricklink}
+          onClick={() => openConfirm("bricklink")}
         >
-          {bulk.isPending && bulk.variables === "bricklink" ? <Loader2 className="animate-spin" /> : <Store />}
+          <Store />
           List {selectedLots.length || ""} on BrickLink
         </Button>
       )}

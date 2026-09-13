@@ -14,6 +14,44 @@ export type ListingDraft = {
   prelistUrl: string;
 };
 
+export function listingDescriptionPlain(html: string): string {
+  return html
+    .replace(/<p><img[\s\S]*?<\/p>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export type EbayDraftPatch = {
+  title?: string;
+  price?: number | null;
+  quantity?: number;
+  categoryId?: string;
+  description?: string;
+};
+
+export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch): ListingDraft {
+  const next = { ...draft };
+  if (patch.title != null) next.title = clampTitle(patch.title);
+  if (patch.price !== undefined) next.price = patch.price;
+  if (patch.quantity != null) next.quantity = Math.max(1, Math.floor(patch.quantity));
+  if (patch.categoryId?.trim()) next.categoryId = patch.categoryId.trim();
+  if (patch.description != null) {
+    const img = draft.descriptionHtml.match(/<p><img[\s\S]*?<\/p>/i)?.[0] ?? "";
+    const paras = patch.description
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => `<p>${escapeHtml(p)}</p>`)
+      .join("\n");
+    next.descriptionHtml = [img, paras].filter(Boolean).join("\n");
+  }
+  return next;
+}
+
 function packagingOf(set: LegoSet): string {
   if (set.condition === "new_sealed") return "Box";
   if (set.comesWithBox === "yes") return "Box";

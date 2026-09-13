@@ -11,7 +11,7 @@ import {
   matchBricklinkLot,
   testBricklinkCreds,
 } from "@/lib/bricklink-store";
-import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay } from "@/lib/ebay";
+import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch } from "@/lib/ebay";
 import {
   generateNotifyToken,
   loadEbayNotifyConfig,
@@ -832,14 +832,28 @@ export const exportListingCsv = createServerFn({ method: "GET" }).middleware([au
   });
 
 export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
+  .validator(
+    z.object({
+      id: z.number().int(),
+      settings: settingsSchema,
+      patch: z
+        .object({
+          title: z.string().optional(),
+          price: z.number().nullable().optional(),
+          quantity: z.number().int().optional(),
+          categoryId: z.string().optional(),
+          description: z.string().optional(),
+        })
+        .optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const sql = await getSql();
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
     const settings = { ...envSettings(data.settings), marketplace: "EBAY_GB" as const };
-    const draft = composeListing(set, settings.marketplace);
+    const draft = applyEbayDraftPatch(composeListing(set, settings.marketplace), data.patch ?? {});
     const published = await publishToEbay(set, settings, draft);
     const rows = await sql<Row>`
       update lego_sets
@@ -858,7 +872,18 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
   });
 
 export const listOnBricklink = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
+  .validator(
+    z.object({
+      id: z.number().int(),
+      settings: settingsSchema,
+      patch: z
+        .object({
+          unitPrice: z.number().optional(),
+          description: z.string().optional(),
+        })
+        .optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const creds = bricklinkCredsFrom(envSettings(data.settings));
     if (!creds) throw new Error("Set BrickLink API keys as Vercel environment variables to list.");
@@ -867,7 +892,7 @@ export const listOnBricklink = createServerFn({ method: "POST" }).middleware([au
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
     const existing = await findBricklinkBySku(creds, set.sku);
-    const lot = existing ?? (await createBricklinkLot(creds, set));
+    const lot = existing ?? (await createBricklinkLot(creds, set, data.patch));
     const rows = await sql<Row>`
       update lego_sets
       set bl_listed = true,
