@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CLICK_AND_DROP_APP, RM_PACKAGES, RM_SERVICES, serviceLabel } from "@/lib/royal-mail";
 import { createPostage, reprintPostage } from "@/lib/server/postage";
-import { credentialsOf, royalMailCanPost, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { credentialsOf, useSettings } from "@/lib/settings";
 import type { SaleOrderDetail } from "@/lib/types";
 
 export function PostageCard({
@@ -20,7 +21,8 @@ export function PostageCard({
   onUpdated: (row: SaleOrderDetail) => void;
 }) {
   const settings = useSettings();
-  const canPost = royalMailCanPost(settings);
+  const apis = useMarketplaceApis();
+  const canPost = apis.royalMail;
   const [service, setService] = useState("TOLP24");
   const [pack, setPack] = useState("smallParcel");
   const [weight, setWeight] = useState("500");

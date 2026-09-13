@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PrintLabelDialog } from "@/components/print-label-dialog";
 import { LocationSelect } from "@/components/location-select";
+import { locationVisibleFor } from "@/lib/locations";
 import { InclusionSelect } from "@/components/inclusion-select";
 import { ImagePicker } from "@/components/image-picker";
 import { BatchNumberSelect } from "@/components/batch-select";
@@ -45,7 +46,8 @@ import {
   syncListings,
   updateSet,
 } from "@/lib/server/sets";
-import { bricklinkCanSync, credentialsOf, ebayCanPublish, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { credentialsOf, useSettings } from "@/lib/settings";
 import {
   bricklinkUrl,
   channelBadgeVariant,
@@ -84,6 +86,7 @@ export function SetDetail({
 }) {
   const qc = useQueryClient();
   const settings = useSettings();
+  const apis = useMarketplaceApis();
   const [condition, setCondition] = useState<Condition>("used_complete");
   const [comesWithInstructions, setComesWithInstructions] = useState<Inclusion>("na");
   const [comesWithBox, setComesWithBox] = useState<Inclusion>("na");
@@ -161,7 +164,7 @@ export function SetDetail({
         data: {
           id: set.id,
           sku: sku.trim() || set.sku,
-          location: location.trim(),
+          location: locationVisibleFor(location, set.itemType) ? location.trim() : "",
           name: itemName.trim() || set.name,
           category: category.trim() || null,
           subCategory: subCategory.trim() || null,
@@ -285,8 +288,8 @@ export function SetDetail({
   });
 
   const draft = preview.data?.draft;
-  const canPublish = ebayCanPublish(settings);
-  const canBl = bricklinkCanSync(settings);
+  const canPublish = apis.ebayPublish;
+  const canBl = apis.bricklink;
   const code = set ? conditionCode(set.condition) : "U";
 
   return (
@@ -460,6 +463,7 @@ export function SetDetail({
                         onChange={setLocation}
                         disabled={!editing}
                         className={fieldClass}
+                        itemType={set.itemType}
                       />
                     </div>
                     <Button
@@ -684,9 +688,9 @@ export function SetDetail({
                     ? "BrickLink current items for sale · qty-weighted average"
                     : set.usedPriceSource === "ebay_used"
                       ? "Min / avg / max from live used eBay comps"
-                      : bricklinkCanSync(settings)
+                      : apis.bricklink
                         ? "Fetch current BrickLink items for sale, then Price fills with the average"
-                        : "Add BrickLink API keys in Settings, then Fetch"}
+                        : "Set BrickLink keys as Vercel environment variables, then Fetch"}
                 </p>
                 <div className="flex flex-wrap gap-3 border-t border-border px-4 py-2 text-xs">
                   <a

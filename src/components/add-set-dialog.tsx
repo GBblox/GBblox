@@ -21,6 +21,7 @@ import { generateSku } from "@/lib/sku";
 import { marketplaceOf } from "@/lib/format";
 import { CONDITIONS, type CatalogHit, type Condition, type Inclusion, type ItemType } from "@/lib/types";
 import { LocationSelect } from "@/components/location-select";
+import { isMinifigLocation } from "@/lib/locations";
 import { InclusionSelect } from "@/components/inclusion-select";
 import { ImagePicker } from "@/components/image-picker";
 import { BatchNumberSelect, batchFieldHint } from "@/components/batch-select";
@@ -142,6 +143,11 @@ export function AddSetDialog({
       picked.itemType === "minifig" ? "na" : condition.startsWith("new") ? "yes" : "no";
     setComesWithInstructions(def);
     setComesWithBox(def);
+    setLocation((cur) => {
+      if (!cur) return cur;
+      const mf = isMinifigLocation(cur);
+      return picked.itemType === "minifig" ? (mf ? cur : "") : mf ? "" : cur;
+    });
   }, [picked?.setNum, picked?.itemType]);
 
   useEffect(() => {
@@ -161,7 +167,10 @@ export function AddSetDialog({
         data: {
           setNum: picked.setNum,
           sku: sku.trim() || undefined,
-          location: location.trim() || undefined,
+          location:
+            location.trim() && isMinifigLocation(location) === (picked.itemType === "minifig")
+              ? location.trim()
+              : undefined,
           itemType: picked.itemType === "minifig" ? "minifig" : "set",
           name: itemName.trim() || picked.name,
           year,
@@ -321,11 +330,13 @@ export function AddSetDialog({
                 </div>
                 <div className="col-span-2 space-y-2 sm:col-span-1">
                   <Label htmlFor="location">Location</Label>
-                  <LocationSelect id="location" value={location} onChange={setLocation} />
+                  <LocationSelect id="location" value={location} onChange={setLocation} itemType={picked.itemType} />
                   <p className="text-xs text-subtle">
-                    {settings.locations?.length
-                      ? "Pick a bin from Settings."
-                      : "Add bins in Settings, then pick one here."}
+                    {picked.itemType === "minifig"
+                      ? "Minifigure bins start with MF."
+                      : settings.locations?.length
+                        ? "Pick a bin from Settings. MF locations are for minifigures."
+                        : "Add bins in Settings, then pick one here."}
                   </p>
                 </div>
                 <div className="col-span-2 space-y-2">

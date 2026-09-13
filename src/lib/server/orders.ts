@@ -8,6 +8,7 @@ import { fetchEbayOrder, listEbaySoldOrders } from "@/lib/ebay";
 import { marketplaceOf } from "@/lib/format";
 import { applySoldOrders, applySoldSale, isPaidSale, saleLineSkus } from "@/lib/sold-sync";
 import type { MarketplaceId, SaleAddress, SaleChannel, SaleLine, SaleOrder, SaleOrderDetail, SalesResult } from "@/lib/types";
+import { applyMarketplaceEnv } from "./marketplace-env";
 
 const credsSchema = z.object({
   ebayUserToken: z.string().optional().default(""),
@@ -158,7 +159,8 @@ async function saveSale(detail: SaleOrderDetail): Promise<void> {
 
 export const listSales = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(credsSchema)
-  .handler(async ({ data }): Promise<SalesResult> => {
+  .handler(async ({ data: raw }): Promise<SalesResult> => {
+    const data = applyMarketplaceEnv(raw);
     const warnings: string[] = [];
     const live: SaleOrder[] = [];
     const token = data.ebayUserToken.trim();
@@ -241,7 +243,8 @@ export const getSaleOrder = createServerFn({ method: "POST" }).middleware([authM
       refresh: z.boolean().optional().default(true),
     }),
   )
-  .handler(async ({ data }): Promise<SaleOrderDetail> => {
+  .handler(async ({ data: raw }): Promise<SaleOrderDetail> => {
+    const data = applyMarketplaceEnv(raw);
     const channel = data.channel as SaleChannel;
     const id = data.id.trim();
     if (!data.refresh) {
@@ -258,11 +261,11 @@ export const getSaleOrder = createServerFn({ method: "POST" }).middleware([authM
     let detail: SaleOrderDetail;
     if (channel === "bricklink") {
       const bl = bricklinkCredsFrom(data);
-      if (!bl) throw new Error("Add BrickLink API keys in Settings to load this order.");
+      if (!bl) throw new Error("Set BrickLink API keys as Vercel environment variables to load this order.");
       detail = await fetchBricklinkOrder(bl, id);
     } else {
       const token = data.ebayUserToken.trim();
-      if (!token) throw new Error("Add an eBay user token in Settings to load this order.");
+      if (!token) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable to load this order.");
       const market = marketplaceOf((data.marketplace as MarketplaceId) || "EBAY_GB");
       detail = await fetchEbayOrder(token, market.siteId, market.id, id);
     }

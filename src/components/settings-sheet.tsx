@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, KeyRound, Loader2, MapPin, Plus, Settings, Store, Truck, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronUp, GripVertical, KeyRound, Loader2, MapPin, Plus, Settings, Store, Truck, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { UserButton } from "@/lib/auth/gates";
-import { addLocationOption, removeLocationOption } from "@/lib/locations";
+import { addLocationOption, isMinifigLocation, moveLocationOption, removeLocationOption } from "@/lib/locations";
 import { getEbayNotifyConfig, mintEbayNotifyToken, testBricklinkToken, testEbayToken, updateEbayNotifyConfig } from "@/lib/server/sets";
 import { testRoyalMailKey } from "@/lib/server/postage";
-import { bricklinkCanSync, royalMailCanPost, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { useSettings } from "@/lib/settings";
 import type { Condition, Inclusion } from "@/lib/types";
 
 type SettingsPage = "locations" | "marketplace" | "rebrickable" | "ebay" | "bricklink" | "royalmail";
@@ -34,11 +35,13 @@ const PAGES: { id: SettingsPage; title: string; blurb: string; icon: typeof MapP
 
 export function SettingsSheet() {
   const settings = useSettings();
+  const apis = useMarketplaceApis();
   const setSettings = settings.setSettings;
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<SettingsPage | null>(null);
   const [locationDraft, setLocationDraft] = useState("");
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const test = useMutation({
     mutationFn: () =>
@@ -102,7 +105,12 @@ export function SettingsSheet() {
   };
 
   const removeLocation = (loc: string) => {
+    if (!window.confirm(`Remove location ${loc}? Lots using it keep the code until you change them.`)) return;
     setSettings({ locations: removeLocationOption(settings.locations ?? [], loc) });
+  };
+
+  const moveLocation = (from: number, to: number) => {
+    setSettings({ locations: moveLocationOption(settings.locations ?? [], from, to) });
   };
 
   return (
@@ -165,18 +173,68 @@ export function SettingsSheet() {
           ) : page === "locations" ? (
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Bins and shelves for the Location dropdown on each lot. Location labels print only this code.
+              Bins and shelves for the Location dropdown on each lot. Codes starting with MF only appear on minifigures. Every other code only appears on sets. Drag or use the arrows to change order.
             </p>
             {!(settings.locations ?? []).length ? (
               <p className="text-sm text-muted">None yet. Add A-12, BIN-03, SHELF B4…</p>
             ) : (
               <ul className="space-y-2">
-                {(settings.locations ?? []).map((loc) => (
+                {(settings.locations ?? []).map((loc, i, list) => (
                   <li
                     key={loc}
-                    className="flex items-center gap-2 rounded-md bg-surface px-3 py-1.5 shadow-[var(--shadow-border)]"
+                    draggable
+                    onDragStart={(e) => {
+                      setDragIndex(i);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", String(i));
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = Number(e.dataTransfer.getData("text/plain"));
+                      moveLocation(Number.isInteger(from) ? from : (dragIndex ?? i), i);
+                      setDragIndex(null);
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                    className={`flex items-center gap-1 rounded-md bg-surface px-1.5 py-1 shadow-[var(--shadow-border)] ${
+                      dragIndex === i ? "opacity-50" : ""
+                    }`}
                   >
+                    <span
+                      className="flex size-10 shrink-0 cursor-grab items-center justify-center text-muted active:cursor-grabbing"
+                      aria-hidden
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
                     <span className="min-w-0 flex-1 font-mono text-sm">{loc}</span>
+                    <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted uppercase">
+                      {isMinifigLocation(loc) ? "Minifig" : "Set"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-10 shrink-0 px-0"
+                      aria-label={`Move ${loc} up`}
+                      disabled={i === 0}
+                      onClick={() => moveLocation(i, i - 1)}
+                    >
+                      <ChevronUp />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="size-10 shrink-0 px-0"
+                      aria-label={`Move ${loc} down`}
+                      disabled={i === list.length - 1}
+                      onClick={() => moveLocation(i, i + 1)}
+                    >
+                      <ChevronDown />
+                    </Button>
                     <Button
                       type="button"
                       variant="ghost"
@@ -265,10 +323,11 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Optional. A free key from rebrickable.com/api lets lookups hit their live API for brand-new sets. The daily catalog already covers the rest.
+              Optional. Set <span className="font-mono">REBRICKABLE_API_KEY</span> on Vercel. A value here is only used if that env var is empty. Lookups hit their live API for brand-new sets; the daily catalog covers the rest.
             </p>
+            <EnvStatus set={apis.env?.rebrickable} names={["REBRICKABLE_API_KEY"]} />
             <div className="space-y-2">
-              <Label htmlFor="rb">API key</Label>
+              <Label htmlFor="rb">API key fallback</Label>
               <Input
                 id="rb"
                 type="password"
@@ -283,8 +342,10 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Listings use the eBay UK Trading API (site 3, GBP, ebay.co.uk). App ID + Cert ID power used-price comps. A user token publishes listings.
+              Listings use the eBay UK Trading API (site 3, GBP, ebay.co.uk). Set these on Vercel: <span className="font-mono">EBAY_CLIENT_ID</span>, <span className="font-mono">EBAY_CLIENT_SECRET</span>, <span className="font-mono">EBAY_USER_TOKEN</span>. App ID + Cert ID power used-price comps. A user token publishes listings.
             </p>
+            <EnvStatus set={apis.env?.ebayApp} names={["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"]} />
+            <EnvStatus set={apis.env?.ebayUser} names={["EBAY_USER_TOKEN"]} />
             <div className="space-y-2">
               <Label htmlFor="cid">App ID (Client ID)</Label>
               <Input
@@ -319,7 +380,7 @@ export function SettingsSheet() {
             <Button
               variant="secondary"
               className="w-full"
-              disabled={!settings.ebayUserToken.trim() || test.isPending}
+              disabled={!apis.ebayPublish || test.isPending}
               onClick={() => test.mutate()}
             >
               {test.isPending ? <Loader2 className="animate-spin" /> : <Check />}
@@ -380,8 +441,12 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Store API keys power the BrickLink price guide (new and used), match lots when Remarks equals SKU, and list a set with that SKU in Remarks.
+              Set these on Vercel: <span className="font-mono">BRICKLINK_CONSUMER_KEY</span>, <span className="font-mono">BRICKLINK_CONSUMER_SECRET</span>, <span className="font-mono">BRICKLINK_TOKEN</span>, <span className="font-mono">BRICKLINK_TOKEN_SECRET</span>. They power the price guide, SKU match, and listing. Values here are only used if the env vars are empty.
             </p>
+            <EnvStatus
+              set={apis.env?.bricklink}
+              names={["BRICKLINK_CONSUMER_KEY", "BRICKLINK_CONSUMER_SECRET", "BRICKLINK_TOKEN", "BRICKLINK_TOKEN_SECRET"]}
+            />
             <div className="space-y-2">
               <Label htmlFor="bl-ck">Consumer key</Label>
               <Input
@@ -425,7 +490,7 @@ export function SettingsSheet() {
             <Button
               variant="secondary"
               className="w-full"
-              disabled={!bricklinkCanSync(settings) || testBl.isPending}
+              disabled={!apis.bricklink || testBl.isPending}
               onClick={() => testBl.mutate()}
             >
               {testBl.isPending ? <Loader2 className="animate-spin" /> : <Check />}
@@ -442,8 +507,9 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Pay-as-you-go Click & Drop (OLP, not an OBA business account). Orders are sent to the Click & Drop app — labels are printed there, not in GBblox.
+              Pay-as-you-go Click & Drop (OLP). Set <span className="font-mono">ROYAL_MAIL_API_KEY</span> on Vercel. Orders go to the Click & Drop app — labels are printed there, not in GBblox. A key here is only used if the env var is empty.
             </p>
+            <EnvStatus set={apis.env?.royalMail} names={["ROYAL_MAIL_API_KEY"]} />
             <div className="space-y-2">
               <Label htmlFor="rm-key">Click & Drop authorisation key</Label>
               <Input
@@ -467,7 +533,7 @@ export function SettingsSheet() {
             <Button
               variant="secondary"
               className="w-full"
-              disabled={!royalMailCanPost(settings) || testRm.isPending}
+              disabled={!apis.royalMail || testRm.isPending}
               onClick={() => testRm.mutate()}
             >
               {testRm.isPending ? <Loader2 className="animate-spin" /> : <Check />}
@@ -487,7 +553,7 @@ export function SettingsSheet() {
               </li>
               <li>Settings → Integrations → add Click & Drop API and copy the authorisation key</li>
               <li>Tick “Use shipping address for billing address” on that integration</li>
-              <li>Paste the key here and Test Click & Drop</li>
+              <li>Add the key as ROYAL_MAIL_API_KEY on Vercel (or paste a fallback here) and Test Click & Drop</li>
               <li>From a sale, send the order to Click & Drop, then print the label in that app</li>
             </ol>
           </section>
@@ -495,5 +561,18 @@ export function SettingsSheet() {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function EnvStatus({ set, names }: { set?: boolean; names: string[] }) {
+  return (
+    <p className="rounded-md bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+      Vercel: {names.map((n) => (
+        <span key={n} className="mr-1 font-mono text-fg">
+          {n}
+        </span>
+      ))}
+      {set ? " · set on this deployment" : " · not set yet"}
+    </p>
   );
 }

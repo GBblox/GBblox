@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatAddress, formatMoney, formatWhen, saleStatusLabel } from "@/lib/format";
 import { getSaleOrder, listSales } from "@/lib/server/orders";
-import { bricklinkCanSync, credentialsOf, ebayCanPublish, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { credentialsOf, useSettings } from "@/lib/settings";
 import type { LegoSet, SaleChannel, SaleOrder, SaleOrderDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -21,14 +22,15 @@ const CHANNELS: { id: "all" | SaleChannel; label: string }[] = [
 export function SalesPanel({ catalogSkus, lots = [] }: { catalogSkus: Set<string>; lots?: LegoSet[] }) {
   const qc = useQueryClient();
   const settings = useSettings();
+  const apis = useMarketplaceApis();
   const [channel, setChannel] = useState<"all" | SaleChannel>("all");
   const [detail, setDetail] = useState<SaleOrderDetail | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [picking, setPicking] = useState(false);
   const [pickOrders, setPickOrders] = useState<SaleOrder[] | null>(null);
   const [pickLoading, setPickLoading] = useState(false);
-  const canEbay = ebayCanPublish(settings);
-  const canBl = bricklinkCanSync(settings);
+  const canEbay = apis.ebayPublish;
+  const canBl = apis.bricklink;
 
   const query = useQuery({
     queryKey: ["sales", settings.ebayUserToken, settings.blToken, settings.marketplace],

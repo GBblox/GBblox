@@ -6,6 +6,7 @@ import { getSql } from "@/lib/db";
 import { createRoyalMailLabel, fetchRoyalMailOrder, testRoyalMail } from "@/lib/royal-mail";
 import type { PostageLabel, SaleOrderDetail } from "@/lib/types";
 import { getSaleOrder } from "./orders";
+import { applyMarketplaceEnv } from "./marketplace-env";
 
 const credsSchema = z.object({
   ebayUserToken: z.string().optional().default(""),
@@ -35,10 +36,10 @@ async function savePostage(channel: string, id: string, postage: PostageLabel): 
 }
 
 export const testRoyalMailKey = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({ royalMailApiKey: z.string() }))
+  .validator(z.object({ royalMailApiKey: z.string().optional().default("") }))
   .handler(async ({ data }) => {
-    const key = data.royalMailApiKey.trim();
-    if (!key) throw new Error("Paste your Click & Drop authorisation key.");
+    const key = applyMarketplaceEnv(data).royalMailApiKey;
+    if (!key) throw new Error("Set ROYAL_MAIL_API_KEY as a Vercel environment variable.");
     return testRoyalMail(key);
   });
 
@@ -53,15 +54,16 @@ export const createPostage = createServerFn({ method: "POST" }).middleware([auth
     }),
   )
   .handler(async ({ data }): Promise<SaleOrderDetail> => {
-    const key = data.royalMailApiKey.trim();
-    if (!key) throw new Error("Add a Royal Mail Click & Drop key in Settings.");
+    const creds = applyMarketplaceEnv(data);
+    const key = creds.royalMailApiKey;
+    if (!key) throw new Error("Set ROYAL_MAIL_API_KEY as a Vercel environment variable.");
     const detail = await getSaleOrder({
       data: {
-        ebayUserToken: data.ebayUserToken,
-        blConsumerKey: data.blConsumerKey,
-        blConsumerSecret: data.blConsumerSecret,
-        blToken: data.blToken,
-        blTokenSecret: data.blTokenSecret,
+        ebayUserToken: creds.ebayUserToken,
+        blConsumerKey: creds.blConsumerKey,
+        blConsumerSecret: creds.blConsumerSecret,
+        blToken: creds.blToken,
+        blTokenSecret: creds.blTokenSecret,
         marketplace: data.marketplace,
         channel: data.channel,
         id: data.id,
@@ -72,7 +74,7 @@ export const createPostage = createServerFn({ method: "POST" }).middleware([auth
       serviceCode: data.serviceCode,
       packageFormat: data.packageFormat,
       weightGrams: data.weightGrams,
-      senderName: data.royalMailSenderName,
+      senderName: creds.royalMailSenderName,
     });
     const postage: PostageLabel = {
       orderIdentifier: result.orderIdentifier,
@@ -93,15 +95,16 @@ export const reprintPostage = createServerFn({ method: "POST" }).middleware([aut
     }),
   )
   .handler(async ({ data }): Promise<SaleOrderDetail> => {
-    const key = data.royalMailApiKey.trim();
-    if (!key) throw new Error("Add a Royal Mail Click & Drop key in Settings.");
+    const creds = applyMarketplaceEnv(data);
+    const key = creds.royalMailApiKey;
+    if (!key) throw new Error("Set ROYAL_MAIL_API_KEY as a Vercel environment variable.");
     const detail = await getSaleOrder({
       data: {
-        ebayUserToken: data.ebayUserToken,
-        blConsumerKey: data.blConsumerKey,
-        blConsumerSecret: data.blConsumerSecret,
-        blToken: data.blToken,
-        blTokenSecret: data.blTokenSecret,
+        ebayUserToken: creds.ebayUserToken,
+        blConsumerKey: creds.blConsumerKey,
+        blConsumerSecret: creds.blConsumerSecret,
+        blToken: creds.blToken,
+        blTokenSecret: creds.blTokenSecret,
         marketplace: data.marketplace,
         channel: data.channel,
         id: data.id,

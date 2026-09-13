@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, itemNumberDisplay, itemTypeLabel } from "@/lib/format";
 import { listOnBricklink, listOnEbay } from "@/lib/server/sets";
-import { bricklinkCanSync, credentialsOf, ebayCanPublish, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { credentialsOf, useSettings } from "@/lib/settings";
 import { type LegoSet } from "@/lib/types";
 
 function listable(lot: LegoSet) {
@@ -25,6 +26,7 @@ export function ListingsPanel({
   onOpen: (lot: LegoSet) => void;
 }) {
   const settings = useSettings();
+  const apis = useMarketplaceApis();
   const qc = useQueryClient();
   const [channel, setChannel] = useState<"ebay" | "bricklink">("ebay");
   const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -144,7 +146,7 @@ export function ListingsPanel({
           type="button"
           size="sm"
           className="w-full"
-          disabled={!selectedLots.length || bulk.isPending || !ebayCanPublish(settings)}
+          disabled={!selectedLots.length || bulk.isPending || !apis.ebayPublish}
           onClick={() => bulk.mutate("ebay")}
         >
           {bulk.isPending && bulk.variables === "ebay" ? <Loader2 className="animate-spin" /> : <Store />}
@@ -156,7 +158,7 @@ export function ListingsPanel({
           size="sm"
           variant="secondary"
           className="w-full"
-          disabled={!selectedLots.length || bulk.isPending || !bricklinkCanSync(settings)}
+          disabled={!selectedLots.length || bulk.isPending || !apis.bricklink}
           onClick={() => bulk.mutate("bricklink")}
         >
           {bulk.isPending && bulk.variables === "bricklink" ? <Loader2 className="animate-spin" /> : <Store />}

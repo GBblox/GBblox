@@ -27,10 +27,23 @@ export function parseLocations(raw: unknown): string[] {
   return out;
 }
 
-export function locationChoices(saved: string[], current = ""): string[] {
-  const list = parseLocations(saved);
+export function isMinifigLocation(raw: string): boolean {
+  return normalizeLocation(raw).toUpperCase().startsWith("MF");
+}
+
+export function locationVisibleFor(raw: string, itemType?: "set" | "minifig"): boolean {
+  const loc = normalizeLocation(raw);
+  if (!loc) return false;
+  const mf = isMinifigLocation(loc);
+  if (itemType === "minifig") return mf;
+  if (itemType === "set") return !mf;
+  return true;
+}
+
+export function locationChoices(saved: string[], current = "", itemType?: "set" | "minifig"): string[] {
+  const list = parseLocations(saved).filter((loc) => locationVisibleFor(loc, itemType));
   const cur = normalizeLocation(current);
-  if (cur && !list.some((l) => l.toLowerCase() === cur.toLowerCase())) {
+  if (cur && locationVisibleFor(cur, itemType) && !list.some((l) => l.toLowerCase() === cur.toLowerCase())) {
     return [cur, ...list];
   }
   return list;
@@ -51,6 +64,17 @@ export function addLocationOption(
 export function removeLocationOption(saved: string[], raw: string): string[] {
   const key = normalizeLocation(raw).toLowerCase();
   return parseLocations(saved).filter((l) => l.toLowerCase() !== key);
+}
+
+export function moveLocationOption(saved: string[], from: number, to: number): string[] {
+  const list = parseLocations(saved);
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return list;
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  if (item == null) return list;
+  next.splice(to, 0, item);
+  return next;
 }
 
 export function mergeLocationOptions(saved: string[], extras: string[]): string[] {

@@ -1,4 +1,4 @@
-import { code128Svg, drawCode128Stretched } from "./barcode";
+import { code128Svg } from "./barcode";
 import { itemNumberDisplay, itemTypeLabel } from "./format";
 import type { ItemType } from "./types";
 
@@ -33,83 +33,6 @@ export function labelBarcodePayload(lot: LabelLot): {
   return { code: sku, caption: sku, tag: kind, secondary: "" };
 }
 
-function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (ctx.measureText(next).width <= maxWidth) {
-      current = next;
-      continue;
-    }
-    if (current) lines.push(current);
-    current = word;
-    if (lines.length === maxLines - 1) break;
-  }
-  if (lines.length < maxLines && current) lines.push(current);
-  if (lines.length === maxLines) {
-    let last = lines[maxLines - 1] ?? "";
-    while (last && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
-    if (words.join(" ").length > last.length) lines[maxLines - 1] = `${last.trim()}…`;
-  }
-  return lines;
-}
-
-export function renderLabelPng(lot: LabelLot, width = 1464, height = 686): string {
-  if (typeof document === "undefined") return "";
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return "";
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = "#111111";
-  ctx.textBaseline = "top";
-
-  const payload = labelBarcodePayload(lot);
-  const padX = Math.round(width * 0.035);
-  const padY = Math.round(height * 0.07);
-  const innerW = width - padX * 2;
-  const metaH = Math.round(height * 0.11);
-  const skuH = Math.round(height * 0.18);
-  const nameH = lot.barcodeField === "location" ? 0 : Math.round(height * 0.2);
-  const gap = Math.round(height * 0.035);
-
-  ctx.font = `700 ${metaH}px Arial, Helvetica, sans-serif`;
-  ctx.textAlign = "left";
-  ctx.fillText(payload.tag, padX, padY, innerW * 0.55);
-  if (lot.barcodeField !== "location") {
-    const num = itemNumberDisplay(lot.setNum, lot.itemType);
-    ctx.textAlign = "right";
-    ctx.fillText(num, width - padX, padY, innerW * 0.4);
-  }
-
-  let y = padY + metaH + gap;
-  if (nameH) {
-    const name = lot.name.trim() || lot.setNum;
-    const fontPx = Math.round(height * 0.125);
-    ctx.font = `800 ${fontPx}px Arial, Helvetica, sans-serif`;
-    ctx.textAlign = "left";
-    const lines = wrapLines(ctx, name, innerW, 2);
-    lines.forEach((line, i) => ctx.fillText(line, padX, y + i * fontPx * 1.12, innerW));
-    y += Math.round(fontPx * 1.12 * Math.max(1, lines.length)) + gap;
-  }
-
-  const skuY = height - padY - skuH;
-  const barcodeY = y;
-  const barcodeH = Math.max(24, skuY - gap - barcodeY);
-  drawCode128Stretched(ctx, payload.code, padX, barcodeY, innerW, barcodeH);
-
-  ctx.font = `700 ${skuH}px "IBM Plex Mono", Consolas, ui-monospace, monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(payload.caption, width / 2, skuY + skuH / 2, innerW);
-
-  return canvas.toDataURL("image/png");
-}
-
 function escapeHtml(s: string): string {
   return s
     .replaceAll("&", "\u0026amp;")
@@ -119,8 +42,6 @@ function escapeHtml(s: string): string {
 }
 
 export function labelMarkup(lot: LabelLot): string {
-  const png = renderLabelPng(lot);
-  if (png) return `<div class="page"><img class="sheet" alt="" src="${png}" /></div>`;
   const payload = labelBarcodePayload(lot);
   let barcode = "";
   try {
@@ -128,21 +49,21 @@ export function labelMarkup(lot: LabelLot): string {
   } catch {
     barcode = "";
   }
-  const name = lot.name.trim() || lot.setNum;
-  const num = itemNumberDisplay(lot.setNum, lot.itemType);
   if (lot.barcodeField === "location") {
-    return `<article class="label location">
+    return `<div class="page"><article class="label location">
   <header class="meta"><span>${escapeHtml(payload.tag)}</span></header>
   <div class="barcode">${barcode}</div>
   <p class="sku">${escapeHtml(payload.caption)}</p>
-</article>`;
+</article></div>`;
   }
-  return `<article class="label">
+  const name = lot.name.trim() || lot.setNum;
+  const num = itemNumberDisplay(lot.setNum, lot.itemType);
+  return `<div class="page"><article class="label">
   <header class="meta"><span>${escapeHtml(payload.tag)}</span><span>${escapeHtml(num)}</span></header>
   <p class="name">${escapeHtml(name)}</p>
   <div class="barcode">${barcode}</div>
   <p class="sku">${escapeHtml(payload.caption)}</p>
-</article>`;
+</article></div>`;
 }
 
 export function labelPrintDocument(lot: LabelLot, copies = 1): string {
@@ -156,7 +77,7 @@ export function labelPrintDocument(lot: LabelLot, copies = 1): string {
 <style>
   @page { margin: 0; }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-  html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+  html, body { margin: 0; padding: 0; background: #fff; color: #111; width: 100%; height: 100%; }
   .page {
     width: 100%;
     height: 100%;
@@ -167,15 +88,6 @@ export function labelPrintDocument(lot: LabelLot, copies = 1): string {
     page-break-after: always;
   }
   .page:last-child { break-after: auto; page-break-after: auto; }
-  img.sheet {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-    object-position: center center;
-  }
   .label {
     width: 100%;
     height: 100%;
@@ -183,14 +95,53 @@ export function labelPrintDocument(lot: LabelLot, copies = 1): string {
     display: flex;
     flex-direction: column;
     gap: 0.8mm;
+    overflow: hidden;
     font-family: Arial, Helvetica, sans-serif;
   }
-  .meta, .name, .sku { flex: 0 0 auto; }
-  .meta { display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; text-transform: uppercase; }
-  .name { margin: 0; font-size: 12pt; font-weight: 800; }
-  .barcode { flex: 1 1 0; min-height: 8mm; }
-  .barcode svg { width: 100%; height: 100%; display: block; }
-  .sku { margin: 0; text-align: center; font-size: 14pt; font-weight: 700; font-family: Consolas, monospace; }
+  .meta, .name, .sku { flex: 0 0 auto; min-width: 0; }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 2mm;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #333;
+  }
+  .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .label.location .meta { justify-content: center; }
+  .name {
+    margin: 0;
+    font-size: 12pt;
+    font-weight: 800;
+    line-height: 1.12;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  .barcode {
+    flex: 1 1 0;
+    min-height: 8mm;
+    display: flex;
+    align-items: stretch;
+  }
+  .barcode svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .sku {
+    margin: 0;
+    text-align: center;
+    font-family: "IBM Plex Mono", Consolas, ui-monospace, monospace;
+    font-size: 14pt;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
 </style>
 </head>
 <body>
@@ -200,18 +151,7 @@ ${sheets}
 }
 
 function whenPrintable(doc: Document): Promise<void> {
-  const images = Array.from(doc.images);
-  return Promise.all([
-    doc.fonts?.ready ?? Promise.resolve(),
-    ...images.map((img) =>
-      img.complete
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-            img.addEventListener("load", () => resolve(), { once: true });
-            img.addEventListener("error", () => resolve(), { once: true });
-          }),
-    ),
-  ]).then(
+  return Promise.resolve(doc.fonts?.ready).then(
     () =>
       new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));

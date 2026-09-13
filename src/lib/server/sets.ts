@@ -21,6 +21,7 @@ import { isBatchNumber } from "@/lib/batch-rules";
 import { getSql } from "@/lib/db";
 import { marketplaceOf, normalizeLocation, isValidLocation } from "@/lib/format";
 import { fetchMarketPrice } from "@/lib/prices";
+import { applyMarketplaceEnv } from "@/lib/server/marketplace-env";
 import { parseInventoryCsv } from "@/lib/csv";
 import {
   formatSku,
@@ -222,6 +223,27 @@ const settingsSchema = z.object({
   royalMailSenderName: z.string().optional().default(""),
 });
 
+function envSettings(s?: z.infer<typeof settingsSchema>) {
+  return applyMarketplaceEnv({
+    rebrickableApiKey: "",
+    ebayClientId: "",
+    ebayClientSecret: "",
+    ebayUserToken: "",
+    blConsumerKey: "",
+    blConsumerSecret: "",
+    blToken: "",
+    blTokenSecret: "",
+    marketplace: "EBAY_GB" as const,
+    postalCode: "",
+    city: "",
+    shippingCost: "0",
+    handlingDays: "1",
+    royalMailApiKey: "",
+    royalMailSenderName: "",
+    ...s,
+  });
+}
+
 const inclusionEnum = z.enum(["yes", "no", "na"]);
 
 const catalogFields = {
@@ -307,10 +329,11 @@ export const lookupSet = createServerFn({ method: "POST" }).middleware([authMidd
     }),
   )
   .handler(async ({ data }) => {
+    const settings = envSettings(data.settings);
     return searchCatalog(data.query, {
-      apiKey: data.apiKey,
+      apiKey: data.apiKey || settings.rebrickableApiKey,
       itemType: data.itemType,
-      blCreds: credsFromSettings(data.settings),
+      blCreds: credsFromSettings(settings),
     });
   });
 
@@ -334,8 +357,13 @@ export const fetchCatalogDetails = createServerFn({ method: "POST" }).middleware
     }),
   )
   .handler(async ({ data }) => {
-    const creds = credsFromSettings(data.settings);
-    const hits = await searchCatalog(data.setNum, { itemType: data.itemType, blCreds: creds });
+    const settings = envSettings(data.settings);
+    const creds = credsFromSettings(settings);
+    const hits = await searchCatalog(data.setNum, {
+      itemType: data.itemType,
+      apiKey: settings.rebrickableApiKey,
+      blCreds: creds,
+    });
     const hit: CatalogHit =
       hits.find(
         (h) => h.itemType === data.itemType && h.setNum.toLowerCase() === data.setNum.toLowerCase(),
@@ -608,7 +636,7 @@ export const refreshCatalog = createServerFn({ method: "POST" }).middleware([aut
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
-    const creds = credsFromSettings(data.settings);
+    const creds = credsFromSettings(envSettings(data.settings));
     const hit = await enrichCatalogHit({
       itemType: set.itemType,
       setNum: set.setNum,
@@ -671,16 +699,17 @@ export const refreshPrice = createServerFn({ method: "POST" }).middleware([authM
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
+    const settings = applyMarketplaceEnv(data);
     const price = await fetchMarketPrice({
       setNum: set.setNum,
       name: set.name,
-      marketplace: data.marketplace,
-      ebayClientId: data.ebayClientId,
-      ebayClientSecret: data.ebayClientSecret,
-      blConsumerKey: data.blConsumerKey,
-      blConsumerSecret: data.blConsumerSecret,
-      blToken: data.blToken,
-      blTokenSecret: data.blTokenSecret,
+      marketplace: settings.marketplace,
+      ebayClientId: settings.ebayClientId,
+      ebayClientSecret: settings.ebayClientSecret,
+      blConsumerKey: settings.blConsumerKey,
+      blConsumerSecret: settings.blConsumerSecret,
+      blToken: settings.blToken,
+      blTokenSecret: settings.blTokenSecret,
       itemType: set.itemType,
     });
     const isNew = set.condition === "new_sealed" || set.condition === "new_opened";
@@ -714,9 +743,10 @@ export const fillBricklinkPrices = createServerFn({ method: "POST" }).middleware
     }),
   )
   .handler(async ({ data }) => {
-    const bl = bricklinkCredsFrom(data.settings);
-    const ebayApp = data.settings.ebayClientId.trim() && data.settings.ebayClientSecret.trim();
-    if (!bl && !ebayApp) throw new Error("Add BrickLink or eBay API keys in Settings to fill prices.");
+    const settings = envSettings(data.settings);
+    const bl = bricklinkCredsFrom(settings);
+    const ebayApp = settings.ebayClientId.trim() && settings.ebayClientSecret.trim();
+    if (!bl && !ebayApp) throw new Error("Set BrickLink or eBay API keys as Vercel environment variables.");
     const sql = await getSql();
     const rows = await sql<Row>`select * from lego_sets order by id`;
     const want = new Set(data.ids);
@@ -731,13 +761,13 @@ export const fillBricklinkPrices = createServerFn({ method: "POST" }).middleware
         const price = await fetchMarketPrice({
           setNum: lot.setNum,
           name: lot.name,
-          marketplace: data.settings.marketplace,
-          ebayClientId: data.settings.ebayClientId,
-          ebayClientSecret: data.settings.ebayClientSecret,
-          blConsumerKey: data.settings.blConsumerKey,
-          blConsumerSecret: data.settings.blConsumerSecret,
-          blToken: data.settings.blToken,
-          blTokenSecret: data.settings.blTokenSecret,
+          marketplace: settings.marketplace,
+          ebayClientId: settings.ebayClientId,
+          ebayClientSecret: settings.ebayClientSecret,
+          blConsumerKey: settings.blConsumerKey,
+          blConsumerSecret: settings.blConsumerSecret,
+          blToken: settings.blToken,
+          blTokenSecret: settings.blTokenSecret,
           itemType: lot.itemType,
         });
         if (price.used == null && price.new == null) {
@@ -796,8 +826,9 @@ export const exportListingCsv = createServerFn({ method: "GET" }).middleware([au
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
-    const draft = composeListing(set, data.settings.marketplace);
-    return { csv: fileExchangeRow(set, data.settings, draft), filename: `${draft.sku}.csv` };
+    const settings = envSettings(data.settings);
+    const draft = composeListing(set, settings.marketplace);
+    return { csv: fileExchangeRow(set, settings, draft), filename: `${draft.sku}.csv` };
   });
 
 export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
@@ -807,7 +838,7 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
-    const settings = { ...data.settings, marketplace: "EBAY_GB" as const };
+    const settings = { ...envSettings(data.settings), marketplace: "EBAY_GB" as const };
     const draft = composeListing(set, settings.marketplace);
     const published = await publishToEbay(set, settings, draft);
     const rows = await sql<Row>`
@@ -829,8 +860,8 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
 export const listOnBricklink = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(z.object({ id: z.number().int(), settings: settingsSchema }))
   .handler(async ({ data }) => {
-    const creds = bricklinkCredsFrom(data.settings);
-    if (!creds) throw new Error("Add BrickLink API keys in Settings to list.");
+    const creds = bricklinkCredsFrom(envSettings(data.settings));
+    if (!creds) throw new Error("Set BrickLink API keys as Vercel environment variables to list.");
     const sql = await getSql();
     const current = await sql<Row>`select * from lego_sets where id = ${data.id}`;
     if (!current[0]) throw new Error("Set not found.");
@@ -860,15 +891,16 @@ export const syncListings = createServerFn({ method: "POST" }).middleware([authM
       : await sql<Row>`select * from lego_sets order by id`;
     if (data.id && !rows[0]) throw new Error("Set not found.");
 
-    const token = data.settings.ebayUserToken.trim();
-    const market = marketplaceOf(data.settings.marketplace);
-    const blCreds = bricklinkCredsFrom(data.settings);
+    const settings = envSettings(data.settings);
+    const token = settings.ebayUserToken.trim();
+    const market = marketplaceOf(settings.marketplace);
+    const blCreds = bricklinkCredsFrom(settings);
 
     let ebayMap: Map<string, Awaited<ReturnType<typeof lookupEbayBySku>>> | null = null;
     let warning: string | null = null;
     if (token && !data.id) {
       try {
-        ebayMap = await listActiveEbayBySku(token, market.siteId, data.settings.marketplace);
+        ebayMap = await listActiveEbayBySku(token, market.siteId, settings.marketplace);
       } catch (err) {
         warning = err instanceof Error ? err.message : "eBay SKU lookup failed.";
       }
@@ -911,7 +943,7 @@ export const syncListings = createServerFn({ method: "POST" }).middleware([authM
               url: null,
               title: null,
             })
-          : await lookupEbayBySku(token, set.sku, market.siteId, data.settings.marketplace);
+          : await lookupEbayBySku(token, set.sku, market.siteId, settings.marketplace);
         ebayListed = hit.listed;
         ebayStatus = hit.status;
         ebayItemId = hit.itemId;
@@ -958,8 +990,11 @@ export const syncListings = createServerFn({ method: "POST" }).middleware([authM
   });
 
 export const testEbayToken = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({ token: z.string().min(8), marketplace: z.string().optional() }))
+  .validator(z.object({ token: z.string().optional().default(""), marketplace: z.string().optional() }))
   .handler(async ({ data }) => {
+    const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
+    const token = settings.ebayUserToken;
+    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
     const siteId =
       marketplaceOf((data.marketplace as MarketplaceId) || "EBAY_GB").siteId;
     const xml = `<?xml version="1.0" encoding="utf-8"?>
@@ -973,7 +1008,7 @@ export const testEbayToken = createServerFn({ method: "POST" }).middleware([auth
         "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
         "X-EBAY-API-CALL-NAME": "GetUser",
         "X-EBAY-API-SITEID": siteId,
-        "X-EBAY-API-IAF-TOKEN": data.token.trim(),
+        "X-EBAY-API-IAF-TOKEN": token,
       },
       body: xml,
     });
@@ -1011,7 +1046,7 @@ export const testBricklinkToken = createServerFn({ method: "POST" }).middleware(
     }),
   )
   .handler(async ({ data }) => {
-    const creds = bricklinkCredsFrom(data);
-    if (!creds) throw new Error("Paste all four BrickLink API keys.");
+    const creds = bricklinkCredsFrom(applyMarketplaceEnv(data));
+    if (!creds) throw new Error("Set BrickLink API keys as Vercel environment variables.");
     return testBricklinkCreds(creds);
   });

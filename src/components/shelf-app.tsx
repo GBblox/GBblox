@@ -28,7 +28,8 @@ import {
   statusLabel,
 } from "@/lib/format";
 import { fillBricklinkPrices, listSets, syncListings } from "@/lib/server/sets";
-import { bricklinkCanSync, credentialsOf, ebayCanPublish, ebayIsConnected, rehydrateSettings, useSettings } from "@/lib/settings";
+import { useMarketplaceApis } from "@/lib/marketplace-apis";
+import { credentialsOf, rehydrateSettings, useSettings } from "@/lib/settings";
 import { rehydratePrinterSettings } from "@/lib/printer-settings";
 import { shelfBucket, type LegoSet, type ShelfBucket } from "@/lib/types";
 
@@ -94,6 +95,7 @@ const SHELVES: {
 export function ShelfApp() {
   const qc = useQueryClient();
   const settings = useSettings();
+  const apis = useMarketplaceApis();
   const [addOpen, setAddOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [q, setQ] = useState("");
@@ -626,7 +628,7 @@ export function ShelfApp() {
                 <DropdownMenuContent>
                   {view !== "incomplete" ? (
                     <DropdownMenuItem
-                      disabled={matchAll.isPending || !(ebayCanPublish(settings) || bricklinkCanSync(settings))}
+                      disabled={matchAll.isPending || !(apis.ebayPublish || apis.bricklink)}
                       onSelect={() => matchAll.mutate()}
                     >
                       <RefreshCw className="size-4" />
@@ -634,7 +636,7 @@ export function ShelfApp() {
                     </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem
-                    disabled={fillPrices.isPending || !(bricklinkCanSync(settings) || ebayIsConnected(settings)) || visible.length === 0}
+                    disabled={fillPrices.isPending || !(apis.bricklink || apis.ebayApp) || visible.length === 0}
                     onSelect={() => fillPrices.mutate(visible.map((lot) => lot.id))}
                   >
                     <Tag className="size-4" />
