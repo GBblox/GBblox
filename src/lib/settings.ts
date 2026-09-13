@@ -9,6 +9,7 @@ const DEFAULTS: SellerSettings = {
   ebayClientId: "",
   ebayClientSecret: "",
   ebayUserToken: "",
+  ebayRefreshToken: "",
   blConsumerKey: "",
   blConsumerSecret: "",
   blToken: "",
@@ -47,7 +48,7 @@ export const useSellerSettings = create<SettingsState>()(
     {
       name: "brickshelf-settings",
       skipHydration: true,
-      version: 7,
+      version: 8,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<SellerSettings>;
         return {
@@ -68,6 +69,7 @@ export const useSellerSettings = create<SettingsState>()(
           ebayReturnPolicyId: p.ebayReturnPolicyId ?? "",
           ebayReturnPolicyName: p.ebayReturnPolicyName ?? "",
           ebayPremium: p.ebayPremium ?? "0",
+          ebayRefreshToken: p.ebayRefreshToken ?? "",
         };
       },
       partialize: (s) => ({
@@ -75,6 +77,7 @@ export const useSellerSettings = create<SettingsState>()(
         ebayClientId: s.ebayClientId,
         ebayClientSecret: s.ebayClientSecret,
         ebayUserToken: s.ebayUserToken,
+        ebayRefreshToken: s.ebayRefreshToken ?? "",
         blConsumerKey: s.blConsumerKey,
         blConsumerSecret: s.blConsumerSecret,
         blToken: s.blToken,
@@ -113,6 +116,7 @@ export function useSettings(): SellerSettings & { setSettings: SettingsState["se
       ebayClientId: s.ebayClientId,
       ebayClientSecret: s.ebayClientSecret,
       ebayUserToken: s.ebayUserToken,
+      ebayRefreshToken: s.ebayRefreshToken ?? "",
       blConsumerKey: s.blConsumerKey,
       blConsumerSecret: s.blConsumerSecret,
       blToken: s.blToken,
@@ -142,7 +146,7 @@ export function ebayIsConnected(s: SellerSettings): boolean {
 }
 
 export function ebayCanPublish(s: SellerSettings): boolean {
-  return Boolean(s.ebayUserToken.trim());
+  return Boolean(s.ebayUserToken.trim() || s.ebayRefreshToken?.trim());
 }
 
 export function bricklinkCanSync(s: SellerSettings): boolean {
@@ -164,6 +168,7 @@ export function credentialsOf(s: SellerSettings): SellerSettings {
     ebayClientId: s.ebayClientId,
     ebayClientSecret: s.ebayClientSecret,
     ebayUserToken: s.ebayUserToken,
+    ebayRefreshToken: s.ebayRefreshToken ?? "",
     blConsumerKey: s.blConsumerKey,
     blConsumerSecret: s.blConsumerSecret,
     blToken: s.blToken,

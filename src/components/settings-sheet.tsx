@@ -46,7 +46,13 @@ export function SettingsSheet() {
   const test = useMutation({
     mutationFn: () =>
       testEbayToken({
-        data: { token: settings.ebayUserToken, marketplace: settings.marketplace },
+        data: {
+          token: settings.ebayUserToken,
+          refreshToken: settings.ebayRefreshToken ?? "",
+          clientId: settings.ebayClientId,
+          clientSecret: settings.ebayClientSecret,
+          marketplace: settings.marketplace,
+        },
       }),
     onSuccess: (res) => toast.success(`Connected as ${res.userId}`),
     onError: (err) => toast.error(err instanceof Error ? err.message : "Token failed"),
@@ -337,10 +343,10 @@ export function SettingsSheet() {
 
           <section className="space-y-3">
             <p className="text-sm text-muted">
-              Listings use the eBay UK Trading API (site 3, GBP, ebay.co.uk). Set these on Vercel: <span className="font-mono">EBAY_CLIENT_ID</span>, <span className="font-mono">EBAY_CLIENT_SECRET</span>, <span className="font-mono">EBAY_USER_TOKEN</span>. App ID + Cert ID power used-price comps. A user token publishes listings.
+              Listings use the eBay UK Trading API (site 3, GBP, ebay.co.uk). IAF user access tokens expire about every 2 hours — set a refresh token so GBblox can mint a new one. On Vercel: <span className="font-mono">EBAY_CLIENT_ID</span>, <span className="font-mono">EBAY_CLIENT_SECRET</span>, <span className="font-mono">EBAY_REFRESH_TOKEN</span>. <span className="font-mono">EBAY_USER_TOKEN</span> is optional once the refresh token is set.
             </p>
             <EnvStatus set={apis.env?.ebayApp} names={["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"]} />
-            <EnvStatus set={apis.env?.ebayUser} names={["EBAY_USER_TOKEN"]} />
+            <EnvStatus set={apis.env?.ebayUser} names={["EBAY_REFRESH_TOKEN", "EBAY_USER_TOKEN"]} />
             <div className="space-y-2">
               <Label htmlFor="cid">App ID (Client ID)</Label>
               <Input
@@ -362,15 +368,29 @@ export function SettingsSheet() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tok">User token</Label>
+              <Label htmlFor="tok">User access token (IAF)</Label>
               <Input
                 id="tok"
                 type="password"
                 autoComplete="off"
                 value={settings.ebayUserToken}
                 onChange={(e) => setSettings({ ebayUserToken: e.target.value })}
-                placeholder="OAuth user access token"
+                placeholder="Expires ~2 hours"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rtok">Refresh token</Label>
+              <Input
+                id="rtok"
+                type="password"
+                autoComplete="off"
+                value={settings.ebayRefreshToken ?? ""}
+                onChange={(e) => setSettings({ ebayRefreshToken: e.target.value })}
+                placeholder="Lasts ~18 months"
+              />
+              <p className="text-xs text-muted">
+                From the eBay OAuth user-consent response. Prefer <span className="font-mono">EBAY_REFRESH_TOKEN</span> on Vercel so listing and sales keep working after the access token dies.
+              </p>
             </div>
             <Button
               variant="secondary"

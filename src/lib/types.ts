@@ -149,6 +149,7 @@ export type SellerSettings = {
   ebayClientId: string;
   ebayClientSecret: string;
   ebayUserToken: string;
+  ebayRefreshToken?: string;
   blConsumerKey: string;
   blConsumerSecret: string;
   blToken: string;

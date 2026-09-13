@@ -11,7 +11,7 @@ import {
   matchBricklinkLot,
   testBricklinkCreds,
 } from "@/lib/bricklink-store";
-import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch, listEbaySellerProfiles, listEbayStoreCategories, ebayPremiumAmount } from "@/lib/ebay";
+import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch, listEbaySellerProfiles, listEbayStoreCategories, ebayPremiumAmount, tradingCall } from "@/lib/ebay";
 import {
   generateNotifyToken,
   loadEbayNotifyConfig,
@@ -207,6 +207,7 @@ const settingsSchema = z.object({
   ebayClientId: z.string().optional().default(""),
   ebayClientSecret: z.string().optional().default(""),
   ebayUserToken: z.string().optional().default(""),
+  ebayRefreshToken: z.string().optional().default(""),
   blConsumerKey: z.string().optional().default(""),
   blConsumerSecret: z.string().optional().default(""),
   blToken: z.string().optional().default(""),
@@ -236,6 +237,7 @@ function envSettings(s?: z.infer<typeof settingsSchema>) {
     ebayClientId: "",
     ebayClientSecret: "",
     ebayUserToken: "",
+    ebayRefreshToken: "",
     blConsumerKey: "",
     blConsumerSecret: "",
     blToken: "",
@@ -1034,29 +1036,33 @@ export const syncListings = createServerFn({ method: "POST" }).middleware([authM
   });
 
 export const testEbayToken = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
-  .validator(z.object({ token: z.string().optional().default(""), marketplace: z.string().optional() }))
+  .validator(
+    z.object({
+      token: z.string().optional().default(""),
+      refreshToken: z.string().optional().default(""),
+      clientId: z.string().optional().default(""),
+      clientSecret: z.string().optional().default(""),
+      marketplace: z.string().optional(),
+    }),
+  )
   .handler(async ({ data }) => {
-    const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
-    const token = settings.ebayUserToken;
-    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
-    const siteId =
-      marketplaceOf((data.marketplace as MarketplaceId) || "EBAY_GB").siteId;
+    const settings = applyMarketplaceEnv({
+      ebayUserToken: data.token,
+      ebayRefreshToken: data.refreshToken,
+      ebayClientId: data.clientId,
+      ebayClientSecret: data.clientSecret,
+    });
+    const siteId = marketplaceOf((data.marketplace as MarketplaceId) || "EBAY_GB").siteId;
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <GetUserRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <ErrorLanguage>en_US</ErrorLanguage>
+  <ErrorLanguage>en_GB</ErrorLanguage>
 </GetUserRequest>`;
-    const res = await fetch("https://api.ebay.com/ws/api.dll", {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml",
-        "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
-        "X-EBAY-API-CALL-NAME": "GetUser",
-        "X-EBAY-API-SITEID": siteId,
-        "X-EBAY-API-IAF-TOKEN": token,
-      },
-      body: xml,
+    const body = await tradingCall("GetUser", xml, settings.ebayUserToken, siteId, {
+      accessToken: settings.ebayUserToken,
+      refreshToken: settings.ebayRefreshToken,
+      clientId: settings.ebayClientId,
+      clientSecret: settings.ebayClientSecret,
     });
-    const body = await res.text();
     const ack = body.match(/<Ack>([^<]+)<\/Ack>/)?.[1];
     const user = body.match(/<UserID>([^<]+)<\/UserID>/)?.[1];
     const long = body.match(/<LongMessage>([^<]+)<\/LongMessage>/)?.[1];
@@ -1070,18 +1076,14 @@ export const listEbayPolicies = createServerFn({ method: "POST" }).middleware([a
   .validator(z.object({ token: z.string().optional().default("") }))
   .handler(async ({ data }) => {
     const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
-    const token = settings.ebayUserToken;
-    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
-    return listEbaySellerProfiles(token);
+    return listEbaySellerProfiles(settings.ebayUserToken);
   });
 
 export const getEbayStoreCategories = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
   .validator(z.object({ token: z.string().optional().default("") }))
   .handler(async ({ data }) => {
     const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
-    const token = settings.ebayUserToken;
-    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
-    return listEbayStoreCategories(token);
+    return listEbayStoreCategories(settings.ebayUserToken);
   });
 
 export const getEbayNotifyConfig = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware]).handler(async () => {

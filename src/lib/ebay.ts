@@ -1,6 +1,7 @@
 import { clampTitle, conditionLabel, ebaySearchQuery, inclusionLabel, itemNumberDisplay, itemTypeLabel, marketplaceOf } from "./format";
 import { formatSku } from "./sku";
 import { parseEbayStoreCategories, pickStoreMapping, storeChildren, type EbayStoreCategory } from "./ebay-store";
+import { ebayAuthFrom, isEbayAuthError, resolveEbayIafToken, type EbayUserAuth } from "./ebay-auth";
 import type { Condition, LegoSet, MarketplaceId, SaleOrder, SaleOrderDetail, SellerSettings } from "./types";
 
 export type { EbayStoreCategory };
@@ -363,8 +364,12 @@ export async function publishToEbay(
   settings: SellerSettings,
   draft: ListingDraft,
 ): Promise<{ itemId: string; url: string }> {
-  const token = settings.ebayUserToken.trim();
-  if (!token) throw new Error("Add an eBay user token in Settings to publish.");
+  const token = await resolveEbayIafToken({
+    accessToken: settings.ebayUserToken,
+    refreshToken: settings.ebayRefreshToken,
+    clientId: settings.ebayClientId,
+    clientSecret: settings.ebayClientSecret,
+  });
   if (draft.price == null || draft.price <= 0) {
     throw new Error("Set a price before listing.");
   }
@@ -465,24 +470,13 @@ export async function publishToEbay(
   </Item>
 </AddFixedPriceItemRequest>`;
 
-  const res = await fetch("https://api.ebay.com/ws/api.dll", {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml",
-      "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
-      "X-EBAY-API-CALL-NAME": "AddFixedPriceItem",
-      "X-EBAY-API-SITEID": "3",
-      "X-EBAY-API-IAF-TOKEN": token,
-    },
-    body: xml,
-  });
-  const body = await res.text();
+  const body = await tradingCall("AddFixedPriceItem", xml, token, "3", settings);
   const ack = body.match(/<Ack>([^<]+)<\/Ack>/)?.[1];
   const itemId = body.match(/<ItemID>([^<]+)<\/ItemID>/)?.[1];
   const short = body.match(/<ShortMessage>([^<]+)<\/ShortMessage>/)?.[1];
   const long = body.match(/<LongMessage>([^<]+)<\/LongMessage>/)?.[1];
   if (ack !== "Success" && ack !== "Warning") {
-    throw new Error(long || short || `eBay rejected the listing (${res.status}).`);
+    throw new Error(long || short || "eBay rejected the listing.");
   }
   if (!itemId) throw new Error("eBay did not return a listing id.");
   const host = "https://www.ebay.co.uk";
@@ -514,24 +508,43 @@ function decodeXml(s: string | null): string | null {
     .replaceAll("\u0026apos;", "'");
 }
 
-async function tradingCall(
+export async function tradingCall(
   call: string,
   xml: string,
   token: string,
   siteId: string,
+  auth?: EbayUserAuth & {
+    ebayUserToken?: string;
+    ebayRefreshToken?: string;
+    ebayClientId?: string;
+    ebayClientSecret?: string;
+  },
 ): Promise<string> {
-  const res = await fetch("https://api.ebay.com/ws/api.dll", {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml",
-      "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
-      "X-EBAY-API-CALL-NAME": call,
-      "X-EBAY-API-SITEID": siteId,
-      "X-EBAY-API-IAF-TOKEN": token,
-    },
-    body: xml,
+  const post = async (iaf: string) => {
+    const res = await fetch("https://api.ebay.com/ws/api.dll", {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
+        "X-EBAY-API-CALL-NAME": call,
+        "X-EBAY-API-SITEID": siteId,
+        "X-EBAY-API-IAF-TOKEN": iaf,
+      },
+      body: xml,
+    });
+    return res.text();
+  };
+  const creds = ebayAuthFrom({
+    accessToken: token,
+    ...(auth ?? {}),
   });
-  return res.text();
+  let iaf = await resolveEbayIafToken(creds);
+  let body = await post(iaf);
+  if (isEbayAuthError(body)) {
+    iaf = await resolveEbayIafToken(creds, { force: true });
+    body = await post(iaf);
+  }
+  return body;
 }
 
 export type EbaySellerProfile = {

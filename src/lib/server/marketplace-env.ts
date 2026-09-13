@@ -20,6 +20,7 @@ export const MARKETPLACE_ENV_KEYS = {
   ebayClientId: ["EBAY_CLIENT_ID", "EBAY_APP_ID"],
   ebayClientSecret: ["EBAY_CLIENT_SECRET", "EBAY_CERT_ID"],
   ebayUserToken: ["EBAY_USER_TOKEN"],
+  ebayRefreshToken: ["EBAY_REFRESH_TOKEN", "EBAY_USER_REFRESH_TOKEN"],
   bricklinkConsumerKey: ["BRICKLINK_CONSUMER_KEY"],
   bricklinkConsumerSecret: ["BRICKLINK_CONSUMER_SECRET"],
   bricklinkToken: ["BRICKLINK_TOKEN"],
@@ -33,6 +34,7 @@ export type MarketplaceSecrets = {
   ebayClientId: string;
   ebayClientSecret: string;
   ebayUserToken: string;
+  ebayRefreshToken: string;
   blConsumerKey: string;
   blConsumerSecret: string;
   blToken: string;
@@ -47,6 +49,7 @@ export function marketplaceSecretsFromEnv(): MarketplaceSecrets {
     ebayClientId: first(...MARKETPLACE_ENV_KEYS.ebayClientId),
     ebayClientSecret: first(...MARKETPLACE_ENV_KEYS.ebayClientSecret),
     ebayUserToken: first(...MARKETPLACE_ENV_KEYS.ebayUserToken),
+    ebayRefreshToken: first(...MARKETPLACE_ENV_KEYS.ebayRefreshToken),
     blConsumerKey: first(...MARKETPLACE_ENV_KEYS.bricklinkConsumerKey),
     blConsumerSecret: first(...MARKETPLACE_ENV_KEYS.bricklinkConsumerSecret),
     blToken: first(...MARKETPLACE_ENV_KEYS.bricklinkToken),
@@ -68,6 +71,7 @@ export function applyMarketplaceEnv<T extends Partial<MarketplaceSecrets>>(input
     ebayClientId: pick(e.ebayClientId, input.ebayClientId),
     ebayClientSecret: pick(e.ebayClientSecret, input.ebayClientSecret),
     ebayUserToken: pick(e.ebayUserToken, input.ebayUserToken),
+    ebayRefreshToken: pick(e.ebayRefreshToken, input.ebayRefreshToken),
     blConsumerKey: pick(e.blConsumerKey, input.blConsumerKey),
     blConsumerSecret: pick(e.blConsumerSecret, input.blConsumerSecret),
     blToken: pick(e.blToken, input.blToken),
@@ -91,7 +95,7 @@ export function marketplaceEnvStatus(): MarketplaceApiStatus {
   return {
     rebrickable: Boolean(e.rebrickableApiKey),
     ebayApp: Boolean(e.ebayClientId && e.ebayClientSecret),
-    ebayUser: Boolean(e.ebayUserToken),
+    ebayUser: Boolean(e.ebayUserToken || e.ebayRefreshToken),
     bricklink: Boolean(e.blConsumerKey && e.blConsumerSecret && e.blToken && e.blTokenSecret),
     royalMail: Boolean(e.royalMailApiKey),
     keys: MARKETPLACE_ENV_KEYS,
