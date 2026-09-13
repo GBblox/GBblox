@@ -18,6 +18,7 @@ const DEFAULTS: SellerSettings = {
   city: "",
   shippingCost: "0",
   handlingDays: "1",
+  ebayPremium: "0",
   locations: [],
   royalMailApiKey: "",
   royalMailSenderName: "",
@@ -46,7 +47,7 @@ export const useSellerSettings = create<SettingsState>()(
     {
       name: "brickshelf-settings",
       skipHydration: true,
-      version: 6,
+      version: 7,
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<SellerSettings>;
         return {
@@ -66,6 +67,7 @@ export const useSellerSettings = create<SettingsState>()(
           ebayShippingPolicyName: p.ebayShippingPolicyName ?? "",
           ebayReturnPolicyId: p.ebayReturnPolicyId ?? "",
           ebayReturnPolicyName: p.ebayReturnPolicyName ?? "",
+          ebayPremium: p.ebayPremium ?? "0",
         };
       },
       partialize: (s) => ({
@@ -91,6 +93,7 @@ export const useSellerSettings = create<SettingsState>()(
         ebayShippingPolicyName: s.ebayShippingPolicyName,
         ebayReturnPolicyId: s.ebayReturnPolicyId,
         ebayReturnPolicyName: s.ebayReturnPolicyName,
+        ebayPremium: s.ebayPremium ?? "0",
       }),
     },
   ),
@@ -128,6 +131,7 @@ export function useSettings(): SellerSettings & { setSettings: SettingsState["se
       ebayShippingPolicyName: s.ebayShippingPolicyName ?? "",
       ebayReturnPolicyId: s.ebayReturnPolicyId ?? "",
       ebayReturnPolicyName: s.ebayReturnPolicyName ?? "",
+      ebayPremium: s.ebayPremium ?? "0",
       setSettings: s.setSettings,
     })),
   );
@@ -177,5 +181,6 @@ export function credentialsOf(s: SellerSettings): SellerSettings {
     ebayShippingPolicyName: s.ebayShippingPolicyName ?? "",
     ebayReturnPolicyId: s.ebayReturnPolicyId ?? "",
     ebayReturnPolicyName: s.ebayReturnPolicyName ?? "",
+    ebayPremium: s.ebayPremium ?? "0",
   };
 }

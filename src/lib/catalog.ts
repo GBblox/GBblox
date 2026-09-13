@@ -12,6 +12,7 @@ import {
   type BricklinkCreds,
 } from "./bricklink-store";
 import { bricklinkUrl, detectItemType, rebrickableBuyUrl } from "./format";
+import { splitThemePath, themePath, usefulSubcategory } from "./theme-path";
 import type { CatalogHit, ItemType, SellerSettings } from "./types";
 
 export { bricklinkUrl, rebrickableBuyUrl };
@@ -175,14 +176,8 @@ export function splitTheme(themeId: number | null, themes: Map<number, Theme>): 
   subCategory: string | null;
   theme: string | null;
 } {
-  if (themeId == null) return { category: null, subCategory: null, theme: null };
-  const leaf = themes.get(themeId);
-  if (!leaf) return { category: null, subCategory: null, theme: null };
-  const parent = leaf.parentId != null ? themes.get(leaf.parentId) : undefined;
-  if (!parent || THEME_GROUPS.has(parent.name)) {
-    return { category: leaf.name, subCategory: null, theme: leaf.name };
-  }
-  return { category: parent.name, subCategory: leaf.name, theme: leaf.name };
+  const { category, subCategory } = splitThemePath(themePath(themeId, themes, THEME_GROUPS));
+  return { category, subCategory, theme: subCategory || category };
 }
 
 function toSetHit(set: CatalogSet, themes: Map<number, Theme>): CatalogHit {
@@ -266,7 +261,8 @@ function mergeHit(base: CatalogHit, extra: CatalogHit): CatalogHit {
     theme: base.theme ?? extra.theme,
     themeId: base.themeId ?? extra.themeId,
     category: base.category ?? extra.category,
-    subCategory: base.subCategory ?? extra.subCategory,
+    subCategory: usefulSubcategory(base.subCategory, base.category ?? extra.category, base.name)
+      ?? usefulSubcategory(extra.subCategory, base.category ?? extra.category, extra.name),
     weightGrams: base.weightGrams ?? extra.weightGrams,
     numParts: base.numParts ?? extra.numParts,
     imageUrl: preferImage(base.imageUrl, extra.imageUrl),
@@ -339,9 +335,11 @@ export async function enrichCatalogHit(
   let next = hit;
   if (creds) {
     const bl = await bricklinkHit(hit.setNum, hit.itemType, creds);
-    if (bl) next = mergeHit(bl, next);
+    if (bl) next = mergeHit(next, bl);
   }
-  if (!next.year || !next.category || !next.name || next.name.toLowerCase() === next.setNum.toLowerCase() || !next.weightGrams) {
+  const placeholder = !next.name || next.name.toLowerCase() === next.setNum.toLowerCase();
+  const needsFacts = !next.year || !next.category || !next.subCategory || !next.weightGrams || placeholder;
+  if (needsFacts) {
     try {
       const be = await fetchBrickEconomyDetails(hit.setNum, hit.itemType);
       if (be) next = mergeHit(next, brickEconomyToHit(be));
@@ -349,7 +347,7 @@ export async function enrichCatalogHit(
       /* BrickEconomy is a fallback */
     }
   }
-  if (!next.year || !next.weightGrams || next.name.toLowerCase() === next.setNum.toLowerCase()) {
+  if (!next.year || !next.weightGrams || !next.subCategory || placeholder) {
     const extra = await fetchExternalCatalog(hit.setNum, hit.itemType);
     next = applyDetails(next, extra);
   }

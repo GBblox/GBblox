@@ -11,6 +11,7 @@ import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { GOOGLE_LOGIN_PAUSED, isOwnerEmail, OWNER_EMAIL } from "@/lib/owner";
 import { prepareEnvLogin } from "@/lib/server/login";
+import { persistAuthPayload, readPersistedSession } from "@/lib/session-persist";
 
 const GOOGLE = GROK_PROVIDERS.find((p) => p.idp === "google");
 
@@ -100,13 +101,14 @@ export function LoginScreen() {
     setPending(true);
     try {
       const prepared = await prepareEnvLogin({ data: { username, password } });
-      const { error } = await authClient.signIn.email({
+      const result = await authClient.signIn.email({
         email: prepared.email,
         password,
         rememberMe: true,
         callbackURL: "/",
       });
-      if (error) throw new Error(error.message || "Sign-in failed");
+      if (result.error) throw new Error(result.error.message || "Sign-in failed");
+      persistAuthPayload(result.data);
       window.location.assign("/");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign-in failed");
@@ -171,9 +173,10 @@ export function OwnerGate({ children }: { children: ReactNode }) {
   const { sessionUser, passwordLogin } = useRouteContext({ from: "__root__" });
   const { user, isPending } = useCurrentUserState();
   if (!passwordLogin && (GOOGLE_LOGIN_PAUSED || import.meta.env.DEV)) return <>{children}</>;
-  const email = user?.primaryEmail ?? sessionUser?.email ?? null;
-  const signedIn = Boolean(user ?? sessionUser);
-  if (isPending && !sessionUser) {
+  const persisted = readPersistedSession();
+  const email = user?.primaryEmail ?? sessionUser?.email ?? persisted?.email ?? null;
+  const signedIn = Boolean(user ?? sessionUser ?? persisted);
+  if (isPending && !sessionUser && !persisted) {
     return (
       <div className="min-h-screen bg-bg">
         <div className="h-16 border-b border-border bg-surface" />

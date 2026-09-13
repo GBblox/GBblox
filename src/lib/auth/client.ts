@@ -1,6 +1,7 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
+import { clearPersistedSession, persistAuthPayload, persistedBearerToken } from "../session-persist";
 import { GROK_PROVIDERS } from "./providers";
 
 /**
@@ -52,10 +53,12 @@ const BEARER_KEY = "grok-auth.bearer-token";
 export function getBearerToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(BEARER_KEY);
+    const live = window.sessionStorage.getItem(BEARER_KEY);
+    if (live) return live;
   } catch {
-    return null;
+    /* storage unavailable */
   }
+  return persistedBearerToken();
 }
 
 function setBearerToken(token: string | null): void {
@@ -66,6 +69,7 @@ function setBearerToken(token: string | null): void {
   } catch {
     /* storage unavailable — ignore */
   }
+  if (!token) clearPersistedSession();
 }
 
 /**
@@ -126,6 +130,7 @@ export async function signIn(
     const token = await waitForPopupToken(popup);
     if (!token) throw new Error("Sign-in was cancelled or failed");
     setBearerToken(token);
+    persistAuthPayload({ token, session: { token } });
     // Refresh the client session store with the bearer attached (onRequest).
     // Avoid a full iframe reload when we're already on the destination — that
     // reload was the slow "still loading after the popup closed" feeling.

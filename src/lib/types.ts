@@ -158,6 +158,7 @@ export type SellerSettings = {
   city: string;
   shippingCost: string;
   handlingDays: string;
+  ebayPremium?: string;
   locations?: string[];
   royalMailApiKey: string;
   royalMailSenderName: string;

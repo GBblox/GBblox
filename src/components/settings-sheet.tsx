@@ -300,6 +300,18 @@ export function SettingsSheet() {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="ebay-premium">eBay premium (£)</Label>
+              <Input
+                id="ebay-premium"
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                value={settings.ebayPremium ?? "0"}
+                onChange={(e) => setSettings({ ebayPremium: e.target.value })}
+              />
+              <p className="text-xs text-muted">Added to every eBay listing price on the confirm table.</p>
+            </div>
             <EbayPolicyPickers />
           </section>
           ) : page === "rebrickable" ? (

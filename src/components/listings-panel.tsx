@@ -1,19 +1,22 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Loader2, Store } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ChannelMark } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { composeBricklinkListing } from "@/lib/bricklink-listing";
-import { composeListing, listingDescriptionPlain } from "@/lib/ebay";
+import { composeListing, ebayPremiumAmount, listingDescriptionPlain, pickStoreMapping, type EbayStoreCategory } from "@/lib/ebay";
 import { formatMoney, itemNumberDisplay, itemTypeLabel } from "@/lib/format";
-import { listOnBricklink, listOnEbay } from "@/lib/server/sets";
+import { getEbayStoreCategories, listOnBricklink, listOnEbay } from "@/lib/server/sets";
 import { useMarketplaceApis } from "@/lib/marketplace-apis";
 import { credentialsOf, useSettings } from "@/lib/settings";
 import { type LegoSet } from "@/lib/types";
+
+const STORE_NONE = "__none__";
 
 function listable(lot: LegoSet) {
   if (lot.status === "sold") return false;
@@ -28,6 +31,8 @@ type EbayRow = {
   quantity: string;
   categoryId: string;
   description: string;
+  storeCategoryId: string;
+  storeCategory2Id: string;
 };
 
 type BlRow = {
@@ -35,14 +40,17 @@ type BlRow = {
   price: string;
 };
 
-function ebayRowOf(lot: LegoSet): EbayRow {
-  const draft = composeListing(lot, "EBAY_GB");
+function ebayRowOf(lot: LegoSet, cats: EbayStoreCategory[] = [], premium = 0): EbayRow {
+  const draft = composeListing(lot, "EBAY_GB", premium);
+  const mapped = cats.length ? pickStoreMapping(cats, lot) : { category: null, subCategory: null };
   return {
     title: draft.title,
     price: draft.price != null ? String(draft.price) : "",
     quantity: String(draft.quantity),
     categoryId: draft.categoryId,
     description: listingDescriptionPlain(draft.descriptionHtml),
+    storeCategoryId: mapped.category?.id ?? "",
+    storeCategory2Id: mapped.subCategory?.id ?? "",
   };
 }
 
@@ -69,6 +77,16 @@ export function ListingsPanel({
   const [confirm, setConfirm] = useState<"ebay" | "bricklink" | null>(null);
   const [ebayRows, setEbayRows] = useState<Record<number, EbayRow>>({});
   const [blRows, setBlRows] = useState<Record<number, BlRow>>({});
+  const storeCats = useQuery({
+    queryKey: ["ebay-store-categories"],
+    queryFn: () => getEbayStoreCategories({ data: { token: settings.ebayUserToken } }),
+    enabled: channel === "ebay",
+    staleTime: 10 * 60 * 1000,
+  });
+  const storeTree = storeCats.data ?? [];
+  const storeParents = storeTree.filter((c) => !c.parentId);
+  const storeRoots = storeParents.length ? storeParents : storeTree;
+  const ebayPremium = ebayPremiumAmount(settings.ebayPremium);
 
   const rows = useMemo(() => {
     return lots.filter((lot) => {
@@ -124,12 +142,34 @@ export function ListingsPanel({
 
   function openConfirm(next: "ebay" | "bricklink") {
     if (next === "ebay") {
-      setEbayRows(Object.fromEntries(selectedLots.map((lot) => [lot.id, ebayRowOf(lot)])));
+      setEbayRows(Object.fromEntries(selectedLots.map((lot) => [lot.id, ebayRowOf(lot, storeTree, ebayPremium)])));
     } else {
       setBlRows(Object.fromEntries(selectedLots.map((lot) => [lot.id, blRowOf(lot)])));
     }
     setConfirm(next);
   }
+
+  useEffect(() => {
+    if (confirm !== "ebay" || !storeTree.length) return;
+    setEbayRows((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [key, row] of Object.entries(prev)) {
+        if (row.storeCategoryId) continue;
+        const lot = selectedLots.find((item) => item.id === Number(key));
+        if (!lot) continue;
+        const mapped = pickStoreMapping(storeTree, lot);
+        if (!mapped.category && !mapped.subCategory) continue;
+        next[Number(key)] = {
+          ...row,
+          storeCategoryId: mapped.category?.id ?? "",
+          storeCategory2Id: mapped.subCategory?.id ?? "",
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [confirm, storeTree, selectedLots]);
 
   const bulk = useMutation({
     mutationFn: async (target: "ebay" | "bricklink") => {
@@ -151,6 +191,8 @@ export function ListingsPanel({
                   quantity: Math.max(1, Number(row?.quantity) || 1),
                   categoryId: row?.categoryId,
                   description: row?.description,
+                  storeCategoryId: row?.storeCategoryId,
+                  storeCategory2Id: row?.storeCategory2Id,
                 },
               },
             });
@@ -201,6 +243,12 @@ export function ListingsPanel({
             <p className="mt-2 text-[16px] leading-snug text-fg">
               Edit fields, then confirm to list {confirmLots.length} item{confirmLots.length === 1 ? "" : "s"}
             </p>
+            {confirm === "ebay" && ebayPremium !== 0 ? (
+              <p className="mt-1 text-sm text-muted">
+                eBay premium {ebayPremium > 0 ? "+" : ""}
+                {formatMoney(ebayPremium, "GBP")} added to each listing price
+              </p>
+            ) : null}
           </div>
           <Button type="button" size="sm" variant="secondary" onClick={() => setConfirm(null)}>
             <ChevronLeft />
@@ -219,7 +267,9 @@ export function ListingsPanel({
                       <th className="px-3 py-2 font-medium">Title</th>
                       <th className="px-3 py-2 font-medium">Price</th>
                       <th className="px-3 py-2 font-medium">Qty</th>
-                      <th className="px-3 py-2 font-medium">Category</th>
+                      <th className="px-3 py-2 font-medium">eBay cat</th>
+                      <th className="px-3 py-2 font-medium">Store category</th>
+                      <th className="px-3 py-2 font-medium">Store subcat</th>
                       <th className="px-3 py-2 font-medium">Description</th>
                     </>
                   ) : (
@@ -273,6 +323,12 @@ export function ListingsPanel({
                                 }))
                               }
                             />
+                            {ebayPremium !== 0 ? (
+                              <p className="mt-1 text-[11px] text-subtle">
+                                incl. {ebayPremium > 0 ? "+" : ""}
+                                {formatMoney(ebayPremium, "GBP")} premium
+                              </p>
+                            ) : null}
                           </td>
                           <td className="px-3 py-2">
                             <Input
@@ -299,6 +355,63 @@ export function ListingsPanel({
                                 }))
                               }
                             />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select
+                              value={ebay.storeCategoryId || STORE_NONE}
+                              onValueChange={(id) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: {
+                                    ...ebay,
+                                    storeCategoryId: id === STORE_NONE ? "" : id,
+                                    storeCategory2Id:
+                                      id !== STORE_NONE &&
+                                      storeTree.some((c) => c.id === ebay.storeCategory2Id && c.parentId === id)
+                                        ? ebay.storeCategory2Id
+                                        : "",
+                                  },
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="min-w-44">
+                                <SelectValue placeholder={storeCats.isPending ? "Loading…" : "None"} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={STORE_NONE}>None</SelectItem>
+                                {storeRoots.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select
+                              value={ebay.storeCategory2Id || STORE_NONE}
+                              onValueChange={(id) =>
+                                setEbayRows((prev) => ({
+                                  ...prev,
+                                  [lot.id]: { ...ebay, storeCategory2Id: id === STORE_NONE ? "" : id },
+                                }))
+                              }
+                              disabled={!ebay.storeCategoryId}
+                            >
+                              <SelectTrigger className="min-w-44">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={STORE_NONE}>None</SelectItem>
+                                {storeTree
+                                  .filter((c) => c.parentId === ebay.storeCategoryId)
+                                  .map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
                           </td>
                           <td className="px-3 py-2">
                             <Textarea

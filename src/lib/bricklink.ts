@@ -1,5 +1,6 @@
 import type { CatalogHit, ItemType } from "./types";
 import { decodeEntities } from "./format";
+import { extractBricklinkPair, extractBricksetPair, usefulSubcategory } from "./theme-path";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -82,21 +83,46 @@ function dtMap(html: string): Map<string, string> {
   return map;
 }
 
-function parseBrickset(html: string): CatalogDetails {
+function labeledValue(html: string, label: string): string | null {
+  const re = new RegExp(
+    `${label}\\s*</(?:dt|th|td|div|span|h[1-6]|label)>\\s*<(?:dd|td|div|span|a)[^>]*>\\s*([^<]+)`,
+    "i",
+  );
+  const m = html.match(re);
+  const val = m?.[1] ? stripTags(m[1]) : "";
+  return val || null;
+}
+
+function bricksetThemePair(html: string): { category: string | null; subCategory: string | null } {
+  return extractBricksetPair(html);
+}
+
+function bricklinkThemePair(html: string, itemType: ItemType): { category: string | null; subCategory: string | null } {
+  const pair = extractBricklinkPair(html);
+  return {
+    category: pair.category || (itemType === "minifig" ? "Minifigures" : null),
+    subCategory: pair.subCategory,
+  };
+}
+
+export function parseBrickset(html: string): CatalogDetails {
   const facts = dtMap(html);
   const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] ?? "";
   const nameFromTitle = title.replace(/\s*\|\s*Brickset.*$/i, "").replace(/^LEGO\s+\d+\S*\s+/i, "").trim();
+  const { category, subCategory } = bricksetThemePair(html);
   return {
     name: facts.get("name") || nameFromTitle || null,
-    category: facts.get("theme") || null,
-    subCategory: facts.get("subtheme") || null,
-    year: parseYear(facts.get("year released") || facts.get("year")),
-    weightGrams: parseWeight(facts.get("weight") || facts.get("packaging weight") || facts.get("item weight")),
+    category,
+    subCategory,
+    year: parseYear(facts.get("year released") || facts.get("year") || labeledValue(html, "Year released")),
+    weightGrams: parseWeight(
+      facts.get("weight") || facts.get("packaging weight") || facts.get("item weight") || labeledValue(html, "Weight"),
+    ),
     source: "brickset",
   };
 }
 
-function parseBrickLink(html: string, itemType: ItemType): CatalogDetails {
+export function parseBrickLink(html: string, itemType: ItemType): CatalogDetails {
   const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] ?? "";
   const nameFromTitle = title
     .replace(/\s*:\s*(Set|Minifigure|Minifig)\s+\S+\s*\|\s*BrickLink.*$/i, "")
@@ -112,22 +138,12 @@ function parseBrickLink(html: string, itemType: ItemType): CatalogDetails {
     parseWeight(html.match(/Weight:\s*<\/[^>]+>\s*([^<]+)/i)?.[1]) ??
     parseWeight(html.match(/Weight:\s*([\d.,]+\s*g)/i)?.[1]);
 
-  const crumb = stripTags(
-    html.match(/Catalog[\s\S]{0,500}?(Set Entry|Minifig Entry|Minifigure)/i)?.[0] ??
-      html.match(/catType=[SM][\s\S]{0,800}/i)?.[0] ??
-      "",
-  );
-  const skip = /^(catalog|sets?|minifigures?|minifigs?|set entry|minifig entry)$/i;
-  const parts = crumb
-    .split(/[:›>]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((s) => !skip.test(s) && !/^\d/.test(s));
+  const { category, subCategory } = bricklinkThemePair(html, itemType);
 
   return {
     name: nameFromTitle ? decodeEntities(nameFromTitle) : null,
-    category: parts[0] ? decodeEntities(parts[0]) : itemType === "minifig" ? "Minifigures" : null,
-    subCategory: parts[1] && parts[1] !== parts[0] ? decodeEntities(parts[1]) : null,
+    category,
+    subCategory: usefulSubcategory(subCategory, category, nameFromTitle),
     year,
     weightGrams: weight,
     source: "bricklink",
@@ -147,7 +163,9 @@ function mergeDetails(...layers: CatalogDetails[]): CatalogDetails {
   for (const layer of layers) {
     if (layer.name && !out.name) out.name = layer.name;
     if (layer.category && !out.category) out.category = layer.category;
-    if (layer.subCategory && !out.subCategory) out.subCategory = layer.subCategory;
+    if (layer.subCategory && !out.subCategory) {
+      out.subCategory = usefulSubcategory(layer.subCategory, out.category || layer.category, out.name);
+    }
     if (layer.year != null && out.year == null) out.year = layer.year;
     if (layer.weightGrams != null && out.weightGrams == null) out.weightGrams = layer.weightGrams;
     if (layer.source) sources.push(layer.source);
@@ -174,8 +192,8 @@ export async function fetchExternalCatalog(
     fetchText(`https://brickset.com/sets/${encodeURIComponent(withSuffix)}`),
   ]);
   const layers: CatalogDetails[] = [];
-  if (blHtml) layers.push(parseBrickLink(blHtml, "set"));
   if (bsHtml) layers.push(parseBrickset(bsHtml));
+  if (blHtml) layers.push(parseBrickLink(blHtml, "set"));
   return mergeDetails(...layers);
 }
 
@@ -185,7 +203,9 @@ export function applyDetails(hit: CatalogHit, extra: CatalogDetails): CatalogHit
     name: decodeEntities(extra.name || hit.name),
     year: extra.year ?? hit.year,
     category: extra.category ? decodeEntities(extra.category) : hit.category ? decodeEntities(hit.category) : null,
-    subCategory: extra.subCategory ? decodeEntities(extra.subCategory) : hit.subCategory ? decodeEntities(hit.subCategory) : null,
+    subCategory:
+      usefulSubcategory(extra.subCategory, extra.category || hit.category, extra.name || hit.name) ??
+      usefulSubcategory(hit.subCategory, extra.category || hit.category, extra.name || hit.name),
     weightGrams: extra.weightGrams ?? hit.weightGrams,
     theme: decodeEntities(extra.subCategory || extra.category || hit.theme || "") || hit.theme,
   };

@@ -1,6 +1,10 @@
 import { clampTitle, conditionLabel, ebaySearchQuery, inclusionLabel, itemNumberDisplay, itemTypeLabel, marketplaceOf } from "./format";
 import { formatSku } from "./sku";
+import { parseEbayStoreCategories, pickStoreMapping, type EbayStoreCategory } from "./ebay-store";
 import type { Condition, LegoSet, MarketplaceId, SaleOrder, SaleOrderDetail, SellerSettings } from "./types";
+
+export type { EbayStoreCategory };
+export { parseEbayStoreCategories, pickStoreMapping };
 
 export type ListingDraft = {
   title: string;
@@ -12,6 +16,8 @@ export type ListingDraft = {
   pictureUrl: string | null;
   sku: string;
   prelistUrl: string;
+  storeCategoryId?: string;
+  storeCategory2Id?: string;
 };
 
 export function listingDescriptionPlain(html: string): string {
@@ -31,6 +37,8 @@ export type EbayDraftPatch = {
   quantity?: number;
   categoryId?: string;
   description?: string;
+  storeCategoryId?: string;
+  storeCategory2Id?: string;
 };
 
 export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch): ListingDraft {
@@ -39,6 +47,8 @@ export function applyEbayDraftPatch(draft: ListingDraft, patch: EbayDraftPatch):
   if (patch.price !== undefined) next.price = patch.price;
   if (patch.quantity != null) next.quantity = Math.max(1, Math.floor(patch.quantity));
   if (patch.categoryId?.trim()) next.categoryId = patch.categoryId.trim();
+  if (patch.storeCategoryId !== undefined) next.storeCategoryId = patch.storeCategoryId.trim();
+  if (patch.storeCategory2Id !== undefined) next.storeCategory2Id = patch.storeCategory2Id.trim();
   if (patch.description != null) {
     const paras = patch.description
       .split(/\n+/)
@@ -105,46 +115,14 @@ function itemSpecificsXml(set: LegoSet): string {
     .join("")}</ItemSpecifics>`;
 }
 
-type StoreCat = { id: string; name: string };
-
-async function listEbayStoreCategories(token: string): Promise<StoreCat[]> {
+export async function listEbayStoreCategories(token: string): Promise<EbayStoreCategory[]> {
   const xml = `<?xml version="1.0" encoding="utf-8"?>
 <GetStoreRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <ErrorLanguage>en_US</ErrorLanguage>
+  <ErrorLanguage>en_GB</ErrorLanguage>
   <CategoryStructureOnly>true</CategoryStructureOnly>
 </GetStoreRequest>`;
-  const res = await fetch("https://api.ebay.com/ws/api.dll", {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml",
-      "X-EBAY-API-COMPATIBILITY-LEVEL": "1395",
-      "X-EBAY-API-CALL-NAME": "GetStore",
-      "X-EBAY-API-SITEID": "3",
-      "X-EBAY-API-IAF-TOKEN": token,
-    },
-    body: xml,
-  });
-  const body = await res.text();
-  const out: StoreCat[] = [];
-  const blocks = body.split(/<CustomCategory>/i).slice(1);
-  for (const block of blocks) {
-    const id = block.match(/<CategoryID>([^<]+)<\/CategoryID>/i)?.[1]?.trim();
-    const name = block.match(/<Name>([^<]+)<\/Name>/i)?.[1]?.trim();
-    if (id && name) out.push({ id, name });
-  }
-  return out;
-}
-
-function pickStoreCategory(cats: StoreCat[], set: LegoSet): StoreCat | null {
-  const needles = [set.category, set.subCategory, set.theme, set.itemType === "minifig" ? "Minifigure" : "Set"]
-    .map((s) => s?.trim().toLowerCase())
-    .filter((s): s is string => Boolean(s));
-  if (!needles.length || !cats.length) return null;
-  const exact = cats.find((c) => needles.includes(c.name.toLowerCase()));
-  if (exact) return exact;
-  return (
-    cats.find((c) => needles.some((n) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase()))) ?? null
-  );
+  const body = await tradingCall("GetStore", xml, token, "3");
+  return parseEbayStoreCategories(body);
 }
 
 function ebayUkCategoryId(set: Pick<LegoSet, "itemType" | "condition">): string {
@@ -179,9 +157,16 @@ async function suggestEbayUkCategory(token: string, set: LegoSet): Promise<strin
   }
 }
 
-function storefrontXml(cat: StoreCat | null): string {
-  if (!cat) return "";
-  return `<Storefront><StoreCategoryID>${escapeXml(cat.id)}</StoreCategoryID></Storefront>`;
+function storefrontXml(
+  category: { id: string } | null,
+  subCategory: { id: string } | null,
+): string {
+  const primary = category?.id || subCategory?.id;
+  const secondary = category && subCategory ? subCategory.id : "";
+  if (!primary) return "";
+  return `<Storefront><StoreCategoryID>${escapeXml(primary)}</StoreCategoryID>${
+    secondary ? `<StoreCategory2ID>${escapeXml(secondary)}</StoreCategory2ID>` : ""
+  }</Storefront>`;
 }
 
 function conditionId(c: Condition): number {
@@ -255,7 +240,17 @@ function ebayTitleCondition(condition: Condition): string {
   return conditionLabel(condition);
 }
 
-export function composeListing(set: LegoSet, marketplace: MarketplaceId): ListingDraft {
+export function ebayPremiumAmount(raw: string | number | null | undefined): number {
+  const n = typeof raw === "number" ? raw : Number(String(raw ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function withEbayPremium(price: number | null, premium: number): number | null {
+  if (price == null) return null;
+  return Math.round((price + premium) * 100) / 100;
+}
+
+export function composeListing(set: LegoSet, marketplace: MarketplaceId, premium = 0): ListingDraft {
   const num = itemNumberDisplay(set.setNum, set.itemType);
   const kind = set.itemType === "minifig" ? "Minifigure" : "";
   const title = clampTitle(
@@ -290,7 +285,7 @@ export function composeListing(set: LegoSet, marketplace: MarketplaceId): Listin
   return {
     title,
     descriptionHtml,
-    price: set.askingPrice,
+    price: withEbayPremium(set.askingPrice, premium),
     quantity: set.qty,
     conditionId: conditionId(set.condition),
     categoryId: ebayUkCategoryId(set),
@@ -381,13 +376,24 @@ export async function publishToEbay(
   const returnId = settings.ebayReturnPolicyId?.trim() ?? "";
   const useProfiles = Boolean(payId || shipId || returnId);
 
-  let storeCat: StoreCat | null = null;
-  try {
-    storeCat = pickStoreCategory(await listEbayStoreCategories(token), set);
-  } catch {
-    storeCat = null;
+  let storeCategory: EbayStoreCategory | null = null;
+  let storeSubCategory: EbayStoreCategory | null = null;
+  if (draft.storeCategoryId || draft.storeCategory2Id) {
+    storeCategory = draft.storeCategoryId ? { id: draft.storeCategoryId, name: "", parentId: null } : null;
+    storeSubCategory = draft.storeCategory2Id
+      ? { id: draft.storeCategory2Id, name: "", parentId: draft.storeCategoryId ?? null }
+      : null;
+  } else {
+    try {
+      const mapped = pickStoreMapping(await listEbayStoreCategories(token), set);
+      storeCategory = mapped.category;
+      storeSubCategory = mapped.subCategory;
+    } catch {
+      storeCategory = null;
+      storeSubCategory = null;
+    }
   }
-  const categoryId = await suggestEbayUkCategory(token, set);
+  const categoryId = draft.categoryId?.trim() || (await suggestEbayUkCategory(token, set));
 
   const profilesXml = useProfiles
     ? `<SellerProfiles>
@@ -425,7 +431,7 @@ export async function publishToEbay(
     <Description><![CDATA[${draft.descriptionHtml}]]></Description>
     <PrimaryCategory><CategoryID>${escapeXml(categoryId)}</CategoryID></PrimaryCategory>
     ${itemSpecificsXml(set)}
-    ${storefrontXml(storeCat)}
+    ${storefrontXml(storeCategory, storeSubCategory)}
     ${profilesXml}
     <StartPrice>${draft.price.toFixed(2)}</StartPrice>
     <CategoryMappingAllowed>true</CategoryMappingAllowed>

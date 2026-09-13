@@ -9,6 +9,7 @@ import { conditionCode, decodeEntities } from "./format";
 import { flattenOrderItems, mapBlItems } from "./bricklink-order-items";
 import { bricklinkListingDescription, completenessOf } from "./bricklink-listing";
 import { skuMatchesRemarks } from "./sku";
+import { splitThemePath, themePath } from "./theme-path";
 import type { ItemType, LegoSet, SaleLine, SaleOrder, SaleOrderDetail } from "./types";
 
 export type { BricklinkPriceBand };
@@ -226,18 +227,11 @@ async function categoryMap(creds: BricklinkCreds) {
   return map;
 }
 
-function splitBlCategory(
+export function splitBlCategory(
   categoryId: number | undefined,
   cats: Map<number, { id: number; name: string; parentId: number | null }>,
 ): { category: string | null; subCategory: string | null } {
-  if (categoryId == null) return { category: null, subCategory: null };
-  const leaf = cats.get(categoryId);
-  if (!leaf) return { category: null, subCategory: null };
-  const parent = leaf.parentId != null ? cats.get(leaf.parentId) : undefined;
-  if (!parent || parent.id === 0 || /^(minifigures?|sets?|catalog|root)$/i.test(parent.name)) {
-    return { category: leaf.name, subCategory: null };
-  }
-  return { category: parent.name, subCategory: leaf.name };
+  return splitThemePath(themePath(categoryId, cats));
 }
 
 export function bricklinkImageUrl(type: ItemType, itemNo: string): string {

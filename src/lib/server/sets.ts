@@ -11,7 +11,7 @@ import {
   matchBricklinkLot,
   testBricklinkCreds,
 } from "@/lib/bricklink-store";
-import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch, listEbaySellerProfiles } from "@/lib/ebay";
+import { composeListing, fileExchangeRow, listActiveEbayBySku, lookupEbayBySku, publishToEbay, applyEbayDraftPatch, listEbaySellerProfiles, listEbayStoreCategories, ebayPremiumAmount } from "@/lib/ebay";
 import {
   generateNotifyToken,
   loadEbayNotifyConfig,
@@ -219,6 +219,7 @@ const settingsSchema = z.object({
   city: z.string().optional().default(""),
   shippingCost: z.string().optional().default("0"),
   handlingDays: z.string().optional().default("1"),
+  ebayPremium: z.string().optional().default("0"),
   royalMailApiKey: z.string().optional().default(""),
   royalMailSenderName: z.string().optional().default(""),
   ebayPaymentPolicyId: z.string().optional().default(""),
@@ -244,6 +245,7 @@ function envSettings(s?: z.infer<typeof settingsSchema>) {
     city: "",
     shippingCost: "0",
     handlingDays: "1",
+    ebayPremium: "0",
     royalMailApiKey: "",
     royalMailSenderName: "",
     ...s,
@@ -394,7 +396,12 @@ export const fetchCatalogDetails = createServerFn({ method: "POST" }).middleware
             : `https://rebrickable.com/sets/${data.setNum}/`,
         retailPrice: null,
       };
-    if (hit.weightGrams != null && hit.category && hit.itemType === data.itemType) {
+    if (
+      hit.weightGrams != null &&
+      hit.category &&
+      (hit.subCategory || hit.itemType === "minifig") &&
+      hit.itemType === data.itemType
+    ) {
       return { ...hit, itemType: data.itemType };
     }
     return enrichCatalogHit({ ...hit, itemType: data.itemType }, creds);
@@ -833,7 +840,7 @@ export const exportListingCsv = createServerFn({ method: "GET" }).middleware([au
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
     const settings = envSettings(data.settings);
-    const draft = composeListing(set, settings.marketplace);
+    const draft = composeListing(set, settings.marketplace, ebayPremiumAmount(settings.ebayPremium));
     return { csv: fileExchangeRow(set, settings, draft), filename: `${draft.sku}.csv` };
   });
 
@@ -849,6 +856,8 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
           quantity: z.number().int().optional(),
           categoryId: z.string().optional(),
           description: z.string().optional(),
+          storeCategoryId: z.string().optional(),
+          storeCategory2Id: z.string().optional(),
         })
         .optional(),
     }),
@@ -859,7 +868,10 @@ export const listOnEbay = createServerFn({ method: "POST" }).middleware([authMid
     if (!current[0]) throw new Error("Set not found.");
     const set = mapSet(current[0]);
     const settings = { ...envSettings(data.settings), marketplace: "EBAY_GB" as const };
-    const draft = applyEbayDraftPatch(composeListing(set, settings.marketplace), data.patch ?? {});
+    const draft = applyEbayDraftPatch(
+      composeListing(set, settings.marketplace, ebayPremiumAmount(settings.ebayPremium)),
+      data.patch ?? {},
+    );
     const published = await publishToEbay(set, settings, draft);
     const rows = await sql<Row>`
       update lego_sets
@@ -1060,6 +1072,15 @@ export const listEbayPolicies = createServerFn({ method: "POST" }).middleware([a
     const token = settings.ebayUserToken;
     if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
     return listEbaySellerProfiles(token);
+  });
+
+export const getEbayStoreCategories = createServerFn({ method: "POST" }).middleware([authMiddleware, ownerMiddleware])
+  .validator(z.object({ token: z.string().optional().default("") }))
+  .handler(async ({ data }) => {
+    const settings = applyMarketplaceEnv({ ebayUserToken: data.token });
+    const token = settings.ebayUserToken;
+    if (token.length < 8) throw new Error("Set EBAY_USER_TOKEN as a Vercel environment variable.");
+    return listEbayStoreCategories(token);
   });
 
 export const getEbayNotifyConfig = createServerFn({ method: "GET" }).middleware([authMiddleware, ownerMiddleware]).handler(async () => {
