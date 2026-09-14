@@ -103,7 +103,7 @@ export function PrintLabelDialog({
                     )}
                   </div>
                   {barcodeField === "location" ? null : (
-                    <p className="mt-1 line-clamp-2 text-lg font-extrabold leading-tight">{lot.name}</p>
+                    <p className="mt-1 line-clamp-2 text-base font-extrabold leading-tight">{lot.name}</p>
                   )}
                   <div
                     className="mt-1 min-h-0 w-full flex-1 [&_svg]:block [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-none"

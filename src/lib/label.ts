@@ -113,7 +113,7 @@ export function labelPrintDocument(lot: LabelLot, copies = 1): string {
   .label.location .meta { justify-content: center; }
   .name {
     margin: 0;
-    font-size: 12pt;
+    font-size: 10pt;
     font-weight: 800;
     line-height: 1.12;
     display: -webkit-box;
