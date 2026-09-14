@@ -36,7 +36,7 @@ export function ListedOnRow({
   if (!ebayListed && !blListed) return null;
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`.trim()}>
-      <Badge className="bg-[#ccff00] text-navy">Listed on</Badge>
+      <Badge className="bg-[#ccff00] text-navy">Listed</Badge>
       {ebayListed ? <ChannelMark channel="ebay" height={height} /> : null}
       {blListed ? <ChannelMark channel="bricklink" height={height} /> : null}
     </div>
