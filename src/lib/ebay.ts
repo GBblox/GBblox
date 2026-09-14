@@ -167,13 +167,9 @@ function storefrontXml(
   subCategory: { id: string } | null,
   subSubCategory: { id: string } | null = null,
 ): string {
-  const ids = [category?.id, subCategory?.id, subSubCategory?.id].filter((id): id is string => Boolean(id));
-  const primary = ids[0];
-  const secondary = ids.length > 1 ? ids[ids.length - 1] : "";
-  if (!primary) return "";
-  return `<Storefront><StoreCategoryID>${escapeXml(primary)}</StoreCategoryID>${
-    secondary && secondary !== primary ? `<StoreCategory2ID>${escapeXml(secondary)}</StoreCategory2ID>` : ""
-  }</Storefront>`;
+  const id = (subSubCategory?.id || subCategory?.id || category?.id || "").trim();
+  if (!id) return "";
+  return `<Storefront><StoreCategoryID>${escapeXml(id)}</StoreCategoryID></Storefront>`;
 }
 
 function conditionId(c: Condition): number {
