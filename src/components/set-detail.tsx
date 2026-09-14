@@ -357,10 +357,15 @@ export function SetDetail({
                     <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
                     <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
                     <Badge variant={statusBadgeVariant(set.status)}>{statusLabel(set.status)}</Badge>
-                    {set.ebayListed ? <ChannelMark channel="ebay" /> : null}
-                    {set.blListed ? <ChannelMark channel="bricklink" /> : null}
                     {set.location ? <Badge variant="location">{set.location}</Badge> : null}
                   </div>
+                  {set.ebayListed || set.blListed ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-semibold tracking-wide text-muted">Listed on</span>
+                      {set.ebayListed ? <ChannelMark channel="ebay" /> : null}
+                      {set.blListed ? <ChannelMark channel="bricklink" /> : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </SheetHeader>
