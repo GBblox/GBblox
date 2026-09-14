@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { extractBricklinkPair, extractBricksetPair, slugToName, splitThemePath, themePath, usefulSubcategory } from "./theme-path.ts";
+import { extractBricklinkPair, extractBricksetPair, isPlaceholderCatalogName, slugToName, splitThemePath, themePath, usefulSubcategory } from "./theme-path.ts";
 
 describe("themePath", () => {
   const groups = new Set(["Licensed"]);
@@ -80,5 +80,24 @@ describe("html subcat extraction", () => {
     const d = extractBricklinkPair(html);
     assert.equal(d.category, "NINJAGO");
     assert.equal(d.subCategory, "Rise of the Snakes");
+  });
+
+  it("reads Super Mario Series 5 as the BrickLink subcat", () => {
+    const html = `
+      <a href="//www.bricklink.com/catalogList.asp?catType=S&catString=1095">Super Mario</a> :
+      <a href="//www.bricklink.com/catalogList.asp?catType=S&catString=1095.1240">Super Mario Series 5</a> :
+      char05-2 <b>Set Entry</b>
+    `;
+    const d = extractBricklinkPair(html);
+    assert.equal(d.category, "Super Mario");
+    assert.equal(d.subCategory, "Super Mario Series 5");
+  });
+});
+
+describe("isPlaceholderCatalogName", () => {
+  it("rejects Brickset empty-page titles", () => {
+    assert.equal(isPlaceholderCatalogName("LEGO char05-2", "char05-2"), true);
+    assert.equal(isPlaceholderCatalogName("char05-2", "char05-2"), true);
+    assert.equal(isPlaceholderCatalogName("Baby Yoshi, Super Mario, Series 5 (Complete Set)", "char05-2"), false);
   });
 });

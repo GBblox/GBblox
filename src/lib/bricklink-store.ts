@@ -9,7 +9,7 @@ import { conditionCode, decodeEntities } from "./format";
 import { flattenOrderItems, mapBlItems } from "./bricklink-order-items";
 import { bricklinkListingDescription, completenessOf } from "./bricklink-listing";
 import { skuMatchesRemarks } from "./sku";
-import { splitThemePath, themePath } from "./theme-path";
+import { themePath, usefulSubcategory } from "./theme-path";
 import type { ItemType, LegoSet, SaleLine, SaleOrder, SaleOrderDetail } from "./types";
 
 export type { BricklinkPriceBand };
@@ -231,14 +231,17 @@ export function splitBlCategory(
   categoryId: number | undefined,
   cats: Map<number, { id: number; name: string; parentId: number | null }>,
 ): { category: string | null; subCategory: string | null } {
-  return splitThemePath(themePath(categoryId, cats));
+  const path = themePath(categoryId, cats);
+  if (path.length >= 2) {
+    const category = path[path.length - 2] ?? null;
+    return { category, subCategory: usefulSubcategory(path[path.length - 1], category) };
+  }
+  return { category: path[0] ?? null, subCategory: null };
 }
 
 export function bricklinkImageUrl(type: ItemType, itemNo: string): string {
-  if (type === "minifig") {
-    return `https://www.brickeconomy.com/resources/images/minifigs/${encodeURIComponent(itemNo)}_medium.jpg`;
-  }
-  return `https://img.bricklink.com/ItemImage/SN/0/${encodeURIComponent(itemNo)}.png`;
+  const folder = type === "minifig" ? "MN" : "SN";
+  return `https://img.bricklink.com/ItemImage/${folder}/0/${encodeURIComponent(itemNo)}.png`;
 }
 
 export async function fetchBricklinkCatalogItem(
@@ -256,19 +259,23 @@ export async function fetchBricklinkCatalogItem(
   imageUrl: string;
 } | null> {
   const type = bricklinkItemType(itemType);
+  const types = itemType === "set" ? (["SET", "GEAR"] as const) : ([type] as const);
   let item: BlItem | null = null;
   let usedNo = itemNo;
-  for (const no of bricklinkItemCandidates(itemType, itemNo)) {
-    try {
-      const data = await blFetch<BlItem>("GET", `/items/${type}/${encodeURIComponent(no)}`, creds);
-      if (data?.no && data.name) {
-        item = data;
-        usedNo = data.no;
-        break;
+  for (const blType of types) {
+    for (const no of bricklinkItemCandidates(itemType, itemNo)) {
+      try {
+        const data = await blFetch<BlItem>("GET", `/items/${blType}/${encodeURIComponent(no)}`, creds);
+        if (data?.no && data.name) {
+          item = data;
+          usedNo = data.no;
+          break;
+        }
+      } catch {
+        /* try next candidate */
       }
-    } catch {
-      /* try next candidate */
     }
+    if (item) break;
   }
   if (!item) return null;
   let category: string | null = null;

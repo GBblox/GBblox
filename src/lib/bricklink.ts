@@ -1,6 +1,6 @@
 import type { CatalogHit, ItemType } from "./types";
 import { decodeEntities } from "./format";
-import { extractBricklinkPair, extractBricksetPair, usefulSubcategory } from "./theme-path";
+import { extractBricklinkPair, isPlaceholderCatalogName, usefulSubcategory } from "./theme-path";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -13,19 +13,6 @@ export type CatalogDetails = {
   weightGrams: number | null;
   source: string | null;
 };
-
-function stripTags(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&/gi, "&")
-    .replace(/"/gi, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function parseYear(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -71,54 +58,11 @@ async function fetchText(url: string, ms = 6000): Promise<string | null> {
   }
 }
 
-function dtMap(html: string): Map<string, string> {
-  const map = new Map<string, string>();
-  const re = /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
-    const key = stripTags(m[1]).toLowerCase();
-    const val = stripTags(m[2]);
-    if (key && val) map.set(key, val);
-  }
-  return map;
-}
-
-function labeledValue(html: string, label: string): string | null {
-  const re = new RegExp(
-    `${label}\\s*</(?:dt|th|td|div|span|h[1-6]|label)>\\s*<(?:dd|td|div|span|a)[^>]*>\\s*([^<]+)`,
-    "i",
-  );
-  const m = html.match(re);
-  const val = m?.[1] ? stripTags(m[1]) : "";
-  return val || null;
-}
-
-function bricksetThemePair(html: string): { category: string | null; subCategory: string | null } {
-  return extractBricksetPair(html);
-}
-
 function bricklinkThemePair(html: string, itemType: ItemType): { category: string | null; subCategory: string | null } {
   const pair = extractBricklinkPair(html);
   return {
     category: pair.category || (itemType === "minifig" ? "Minifigures" : null),
     subCategory: pair.subCategory,
-  };
-}
-
-export function parseBrickset(html: string): CatalogDetails {
-  const facts = dtMap(html);
-  const title = html.match(/<title>([^<]+)<\/title>/i)?.[1] ?? "";
-  const nameFromTitle = title.replace(/\s*\|\s*Brickset.*$/i, "").replace(/^LEGO\s+\d+\S*\s+/i, "").trim();
-  const { category, subCategory } = bricksetThemePair(html);
-  return {
-    name: facts.get("name") || nameFromTitle || null,
-    category,
-    subCategory,
-    year: parseYear(facts.get("year released") || facts.get("year") || labeledValue(html, "Year released")),
-    weightGrams: parseWeight(
-      facts.get("weight") || facts.get("packaging weight") || facts.get("item weight") || labeledValue(html, "Weight"),
-    ),
-    source: "brickset",
   };
 }
 
@@ -161,7 +105,7 @@ function mergeDetails(...layers: CatalogDetails[]): CatalogDetails {
   };
   const sources: string[] = [];
   for (const layer of layers) {
-    if (layer.name && !out.name) out.name = layer.name;
+    if (layer.name && !isPlaceholderCatalogName(layer.name) && !out.name) out.name = layer.name;
     if (layer.category && !out.category) out.category = layer.category;
     if (layer.subCategory && !out.subCategory) {
       out.subCategory = usefulSubcategory(layer.subCategory, out.category || layer.category, out.name);
@@ -180,32 +124,25 @@ export async function fetchExternalCatalog(
   itemType: ItemType = "set",
 ): Promise<CatalogDetails> {
   const num = setNum.trim();
-  if (itemType === "minifig") {
-    const html = await fetchText(
-      `https://www.bricklink.com/v2/catalog/catalogitem.page?M=${encodeURIComponent(num)}`,
-    );
-    return html ? parseBrickLink(html, "minifig") : mergeDetails();
-  }
-  const withSuffix = num.includes("-") ? num : `${num}-1`;
-  const [blHtml, bsHtml] = await Promise.all([
-    fetchText(`https://www.bricklink.com/v2/catalog/catalogitem.page?S=${encodeURIComponent(withSuffix)}`),
-    fetchText(`https://brickset.com/sets/${encodeURIComponent(withSuffix)}`),
-  ]);
-  const layers: CatalogDetails[] = [];
-  if (bsHtml) layers.push(parseBrickset(bsHtml));
-  if (blHtml) layers.push(parseBrickLink(blHtml, "set"));
-  return mergeDetails(...layers);
+  const key = itemType === "minifig" ? "M" : "S";
+  const no = itemType === "set" && !num.includes("-") ? `${num}-1` : num;
+  const html = await fetchText(
+    `https://www.bricklink.com/v2/catalog/catalogitem.page?${key}=${encodeURIComponent(no)}`,
+  );
+  return html ? parseBrickLink(html, itemType) : mergeDetails();
 }
 
 export function applyDetails(hit: CatalogHit, extra: CatalogDetails): CatalogHit {
+  const extraName = extra.name && !isPlaceholderCatalogName(extra.name, hit.setNum) ? extra.name : null;
+  const name = extraName || hit.name;
   return {
     ...hit,
-    name: decodeEntities(extra.name || hit.name),
+    name: decodeEntities(name),
     year: extra.year ?? hit.year,
     category: extra.category ? decodeEntities(extra.category) : hit.category ? decodeEntities(hit.category) : null,
     subCategory:
-      usefulSubcategory(extra.subCategory, extra.category || hit.category, extra.name || hit.name) ??
-      usefulSubcategory(hit.subCategory, extra.category || hit.category, extra.name || hit.name),
+      usefulSubcategory(extra.subCategory, extra.category || hit.category, extraName || hit.name) ??
+      usefulSubcategory(hit.subCategory, extra.category || hit.category, extraName || hit.name),
     weightGrams: extra.weightGrams ?? hit.weightGrams,
     theme: decodeEntities(extra.subCategory || extra.category || hit.theme || "") || hit.theme,
   };

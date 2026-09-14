@@ -26,6 +26,19 @@ export function splitThemePath(path: string[]): { category: string | null; subCa
   return { category, subCategory };
 }
 
+export function isPlaceholderCatalogName(name: string | null | undefined, itemNo?: string | null): boolean {
+  const n = (name ?? "").replace(/\s+/g, " ").trim();
+  if (!n) return true;
+  const stripped = n.replace(/^lego\s+/i, "").trim();
+  const item = (itemNo ?? "").trim().toLowerCase();
+  if (!stripped) return true;
+  if (!item) return stripped.length < 2;
+  const lower = stripped.toLowerCase();
+  if (lower === item) return true;
+  if (lower === item.replace(/-1$/, "")) return true;
+  return false;
+}
+
 export function usefulSubcategory(
   value: string | null | undefined,
   category?: string | null,

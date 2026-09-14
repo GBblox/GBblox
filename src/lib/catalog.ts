@@ -1,18 +1,13 @@
 import { gunzipSync } from "node:zlib";
 import { applyDetails, fetchExternalCatalog } from "./bricklink";
 import {
-  brickEconomyToHit,
-  fetchBrickEconomyDetails,
-  searchBrickEconomy,
-} from "./brickeconomy";
-import {
   bricklinkCredsFrom,
   bricklinkImageUrl,
   fetchBricklinkCatalogItem,
   type BricklinkCreds,
 } from "./bricklink-store";
 import { bricklinkUrl, detectItemType, rebrickableBuyUrl } from "./format";
-import { splitThemePath, themePath, usefulSubcategory } from "./theme-path";
+import { isPlaceholderCatalogName, splitThemePath, themePath, usefulSubcategory } from "./theme-path";
 import type { CatalogHit, ItemType, SellerSettings } from "./types";
 
 export { bricklinkUrl, rebrickableBuyUrl };
@@ -332,26 +327,19 @@ export async function enrichCatalogHit(
   hit: CatalogHit,
   creds?: BricklinkCreds | null,
 ): Promise<CatalogHit> {
-  let next = hit;
-  if (creds) {
-    const bl = await bricklinkHit(hit.setNum, hit.itemType, creds);
-    if (bl) next = mergeHit(next, bl);
-  }
-  const placeholder = !next.name || next.name.toLowerCase() === next.setNum.toLowerCase();
-  const needsFacts = !next.year || !next.category || !next.subCategory || !next.weightGrams || placeholder;
-  if (needsFacts) {
-    try {
-      const be = await fetchBrickEconomyDetails(hit.setNum, hit.itemType);
-      if (be) next = mergeHit(next, brickEconomyToHit(be));
-    } catch {
-      /* BrickEconomy is a fallback */
-    }
-  }
-  if (!next.year || !next.weightGrams || !next.subCategory || placeholder) {
-    const extra = await fetchExternalCatalog(hit.setNum, hit.itemType);
-    next = applyDetails(next, extra);
-  }
-  return next;
+  const bl = await bricklinkHit(hit.setNum, hit.itemType, creds ?? null).catch(() => null);
+  if (!bl) return hit;
+  return {
+    ...hit,
+    setNum: bl.setNum || hit.setNum,
+    name: isPlaceholderCatalogName(bl.name, bl.setNum) ? hit.name : bl.name,
+    year: bl.year ?? hit.year,
+    theme: bl.theme ?? hit.theme,
+    category: bl.category ?? hit.category,
+    subCategory: bl.subCategory ?? hit.subCategory,
+    weightGrams: bl.weightGrams ?? hit.weightGrams,
+    imageUrl: preferImage(bl.imageUrl, hit.imageUrl),
+  };
 }
 
 export type CatalogSearchOpts = {
@@ -370,12 +358,10 @@ export async function searchCatalog(query: string, opts: CatalogSearchOpts | str
   const wantSet = kind !== "minifig";
   const wantFig = kind !== "set";
   const creds = options.blCreds ?? null;
-  const wantBe = wantFig;
   const needRb = wantSet || /^fig-/i.test(q);
 
-  const [catalog, beHits, blSet, blFig] = await Promise.all([
+  const [catalog, blSet, blFig] = await Promise.all([
     needRb ? loadCatalog() : Promise.resolve(null),
-    wantBe ? searchBrickEconomy(q).catch(() => []) : Promise.resolve([]),
     wantSet ? bricklinkHit(q, "set", creds).catch(() => null) : Promise.resolve(null),
     wantFig ? bricklinkHit(q, "minifig", creds).catch(() => null) : Promise.resolve(null),
   ]);
@@ -383,12 +369,6 @@ export async function searchCatalog(query: string, opts: CatalogSearchOpts | str
   const hits: CatalogHit[] = [];
   if (blSet) pushHit(hits, blSet);
   if (blFig) pushHit(hits, blFig);
-
-  for (const be of beHits) {
-    if (be.itemType === "minifig" && !wantFig) continue;
-    if (be.itemType === "set" && !wantSet) continue;
-    pushHit(hits, brickEconomyToHit(be));
-  }
 
   if (catalog && wantSet) {
     const exact = catalog.byNum.get(lower) ?? catalog.byNum.get(`${lower}-1`);

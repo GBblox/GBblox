@@ -22,34 +22,6 @@ function linksFor(setNum: string, name: string, marketplace: MarketplaceId, item
   };
 }
 
-async function fetchRetailFromBrickset(setNum: string, currency: string): Promise<number | null> {
-  try {
-    const res = await fetch(`https://brickset.com/sets/${encodeURIComponent(setNum)}`, {
-      headers: {
-        "User-Agent": "GBblox/1.0 (set inventory; +https://grok.me)",
-        Accept: "text/html",
-      },
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const m = html.match(/<dt>\s*RRP\s*<\/dt>\s*<dd>([^<]+)<\/dd>/i);
-    if (!m?.[1]) return null;
-    const blob = m[1];
-    const prefer =
-      currency === "GBP"
-        ? /£\s*([\d,.]+)/
-        : currency === "EUR"
-          ? /€\s*([\d,.]+)/
-          : /\$\s*([\d,.]+)/;
-    const hit = blob.match(prefer) ?? blob.match(/\$\s*([\d,.]+)/);
-    if (!hit?.[1]) return null;
-    const n = Number(hit[1].replace(/,/g, ""));
-    return Number.isFinite(n) ? n : null;
-  } catch {
-    return null;
-  }
-}
-
 async function ebayAppToken(clientId: string, clientSecret: string): Promise<string> {
   const key = `${clientId}:${clientSecret}`;
   const cached = g.__ebayAppToken__;
@@ -147,7 +119,7 @@ export async function fetchMarketPrice(input: {
   const market = marketplaceOf(input.marketplace);
   const itemType = input.itemType ?? "set";
   const links = linksFor(input.setNum, input.name, input.marketplace, itemType);
-  const retail = itemType === "set" ? await fetchRetailFromBrickset(input.setNum, market.currency) : null;
+  const retail = null;
   const empty = emptyBands();
 
   const bl = bricklinkCredsFrom({
