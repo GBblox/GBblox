@@ -71,6 +71,8 @@ export function detectItemType(query: string): ItemType | "all" {
   const q = query.trim();
   if (!q) return "all";
   if (/^fig-/i.test(q)) return "minifig";
+  // BrickLink set variants: 10281-1, char05-2, comcon001-1
+  if (/-\d+$/.test(q)) return "set";
   if (/^[a-z]{1,8}\d+[a-z0-9]*$/i.test(q)) return "minifig";
   if (/^\d/.test(q)) return "set";
   return "all";

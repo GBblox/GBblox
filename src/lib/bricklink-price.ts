@@ -7,7 +7,11 @@ export function bricklinkItemType(itemType: ItemType): "MINIFIG" | "SET" {
 export function bricklinkItemCandidates(itemType: ItemType, itemNo: string): string[] {
   const no = itemNo.trim();
   if (!no) return [];
-  if (itemType === "set" && !no.includes("-")) return [`${no}-1`, no];
+  if (itemType === "set" && !no.includes("-")) {
+    // Letter-prefix sets (char05, comcon001) are often -2, not -1.
+    if (/^[a-z]/i.test(no)) return [`${no}-1`, `${no}-2`, no];
+    return [`${no}-1`, no];
+  }
   return [no];
 }
 

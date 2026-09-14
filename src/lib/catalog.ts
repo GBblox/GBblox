@@ -372,16 +372,17 @@ export async function searchCatalog(query: string, opts: CatalogSearchOpts | str
   const creds = options.blCreds ?? null;
   const wantBe = wantFig;
   const needRb = wantSet || /^fig-/i.test(q);
-  const blType: ItemType | null = kind === "minifig" || kind === "set" ? kind : null;
 
-  const [catalog, beHits, bl] = await Promise.all([
+  const [catalog, beHits, blSet, blFig] = await Promise.all([
     needRb ? loadCatalog() : Promise.resolve(null),
     wantBe ? searchBrickEconomy(q).catch(() => []) : Promise.resolve([]),
-    blType ? bricklinkHit(q, blType, creds).catch(() => null) : Promise.resolve(null),
+    wantSet ? bricklinkHit(q, "set", creds).catch(() => null) : Promise.resolve(null),
+    wantFig ? bricklinkHit(q, "minifig", creds).catch(() => null) : Promise.resolve(null),
   ]);
 
   const hits: CatalogHit[] = [];
-  if (bl) pushHit(hits, bl);
+  if (blSet) pushHit(hits, blSet);
+  if (blFig) pushHit(hits, blFig);
 
   for (const be of beHits) {
     if (be.itemType === "minifig" && !wantFig) continue;
@@ -466,8 +467,11 @@ export async function searchCatalog(query: string, opts: CatalogSearchOpts | str
     }
   }
 
-  if (hits.length === 0 && wantFig && /^[a-z]{1,8}\d/i.test(q)) {
+  if (hits.length === 0 && wantFig && /^[a-z]{1,8}\d+[a-z0-9]*$/i.test(q) && !/-/.test(q)) {
     hits.push(emptyHit(q, "minifig"));
+  }
+  if (hits.length === 0 && wantSet && (/-\d+$/.test(q) || /^\d/.test(q))) {
+    hits.push(emptyHit(/-/.test(q) ? q : `${q}-1`, "set"));
   }
 
   return hits.slice(0, 10);

@@ -6,6 +6,8 @@ describe("bricklink price guide", () => {
   it("tries SET-1 before the bare set number", () => {
     assert.deepEqual(bricklinkItemCandidates("set", "75192"), ["75192-1", "75192"]);
     assert.deepEqual(bricklinkItemCandidates("minifig", "sw0001"), ["sw0001"]);
+    assert.deepEqual(bricklinkItemCandidates("set", "char05"), ["char05-1", "char05-2", "char05"]);
+    assert.deepEqual(bricklinkItemCandidates("set", "char05-2"), ["char05-2"]);
   });
 
   it("maps BrickLink sold stats", () => {
