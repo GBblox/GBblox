@@ -1,6 +1,7 @@
 import { Camera, CameraOff, MapPin, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ListedOnRow } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -257,6 +258,7 @@ export function ProductEnquiry({
                         </Badge>
                         {lot.location ? <Badge variant="location">{lot.location}</Badge> : null}
                       </span>
+                      <ListedOnRow className="mt-1" ebayListed={lot.ebayListed} blListed={lot.blListed} height={12} />
                     </span>
                     <span className="shrink-0 font-display text-base font-extrabold tabular-nums">
                       {formatMoney(lot.askingPrice ?? lot.usedPrice, lot.currency)}

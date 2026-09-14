@@ -1,6 +1,7 @@
 import { Camera, CameraOff, ClipboardList, FileDown, MapPin, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ListedOnRow } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -659,6 +660,7 @@ export function AuditPanel({
                               <Badge variant="reserved">Not scanned</Badge>
                             )}
                           </span>
+                          <ListedOnRow className="mt-1" ebayListed={lot.ebayListed} blListed={lot.blListed} height={12} />
                         </span>
                       </button>
                     </li>

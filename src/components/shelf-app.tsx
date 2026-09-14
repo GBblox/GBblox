@@ -12,7 +12,7 @@ import { ProductEnquiry } from "@/components/product-enquiry";
 import { SalesPanel } from "@/components/sales-panel";
 import { SetDetail } from "@/components/set-detail";
 import { SettingsSheet } from "@/components/settings-sheet";
-import { ChannelMark } from "@/components/channel-mark";
+import { ListedOnRow } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -763,10 +763,9 @@ function SetCard({
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
           <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
           <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
-          {set.ebayListed ? <ChannelMark channel="ebay" height={12} /> : null}
-          {set.blListed ? <ChannelMark channel="bricklink" height={12} /> : null}
           {set.location ? <Badge variant="location">{set.location}</Badge> : null}
         </div>
+        <ListedOnRow ebayListed={set.ebayListed} blListed={set.blListed} height={12} />
         <p className="truncate text-xs text-muted">
           {[conditionLabel(set.condition), set.year, set.category, set.subCategory]
             .filter(Boolean)
@@ -813,10 +812,9 @@ function SetListRow({
           <Badge variant={statusBadgeVariant(set.status)}>{statusLabel(set.status)}</Badge>
           <Badge variant="default">{itemTypeLabel(set.itemType)}</Badge>
           <Badge variant={code === "N" ? "new" : "used"}>{code}</Badge>
-          {set.ebayListed ? <ChannelMark channel="ebay" height={12} /> : null}
-          {set.blListed ? <ChannelMark channel="bricklink" height={12} /> : null}
           {set.location ? <Badge variant="location">{set.location}</Badge> : null}
         </span>
+        <ListedOnRow className="mt-1" ebayListed={set.ebayListed} blListed={set.blListed} height={12} />
       </span>
       <span className="shrink-0 font-display text-base font-extrabold tabular-nums">
         {formatMoney(set.askingPrice ?? set.usedPrice, set.currency)}

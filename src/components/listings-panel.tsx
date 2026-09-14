@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, Loader2, Store } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChannelMark } from "@/components/channel-mark";
+import { ListedOnRow } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -598,9 +598,8 @@ export function ListingsPanel({
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-1.5">
                     <Badge variant="default">{itemTypeLabel(lot.itemType)}</Badge>
-                    {lot.ebayListed ? <ChannelMark channel="ebay" height={12} /> : null}
-                    {lot.blListed ? <ChannelMark channel="bricklink" height={12} /> : null}
                   </span>
+                  <ListedOnRow className="mt-1" ebayListed={lot.ebayListed} blListed={lot.blListed} height={12} />
                 </span>
                 <span className="shrink-0 font-display text-base font-extrabold tabular-nums">
                   {formatMoney(lot.askingPrice ?? lot.usedPrice, lot.currency)}

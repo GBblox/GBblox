@@ -20,7 +20,7 @@ import { locationVisibleFor } from "@/lib/locations";
 import { InclusionSelect } from "@/components/inclusion-select";
 import { ImagePicker } from "@/components/image-picker";
 import { BatchNumberSelect } from "@/components/batch-select";
-import { ChannelMark } from "@/components/channel-mark";
+import { ListedOnRow } from "@/components/channel-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -359,13 +359,7 @@ export function SetDetail({
                     <Badge variant={statusBadgeVariant(set.status)}>{statusLabel(set.status)}</Badge>
                     {set.location ? <Badge variant="location">{set.location}</Badge> : null}
                   </div>
-                  {set.ebayListed || set.blListed ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-semibold tracking-wide text-muted">Listed on</span>
-                      {set.ebayListed ? <ChannelMark channel="ebay" /> : null}
-                      {set.blListed ? <ChannelMark channel="bricklink" /> : null}
-                    </div>
-                  ) : null}
+                  <ListedOnRow className="mt-2" ebayListed={set.ebayListed} blListed={set.blListed} />
                 </div>
               </div>
             </SheetHeader>
